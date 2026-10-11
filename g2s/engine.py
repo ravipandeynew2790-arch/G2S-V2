@@ -249,6 +249,7 @@ class Bypasser:
         self.current_page = None
         self.busy = False
         self._xvfb_proc = None
+        self.on_proxy_expired = None
 
     def _ensure_display(self):
         if os.name == "nt":
@@ -421,8 +422,16 @@ class Bypasser:
                     "ERR_PROXY_CONNECTION_FAILED", "ERR_TUNNEL_CONNECTION_FAILED",
                     "ERR_CONNECTION_RESET", "ERR_EMPTY_RESPONSE", "ERR_CONNECTION_CLOSED"
                 )):
+                    expired_px = self.cfg.proxy
                     log("⚠ Proxy connection failed (tunnel offline/expired) — switching to direct connection…")
                     self.cfg.proxy = None
+                    if self.on_proxy_expired:
+                        try:
+                            res_cb = self.on_proxy_expired(expired_px, str(e))
+                            if asyncio.iscoroutine(res_cb):
+                                asyncio.ensure_future(res_cb)
+                        except Exception:
+                            pass
                     await self._restart(self._accel)
                     t0 = time.monotonic()
                     return await self._attempt(url, log, t0)

@@ -3,196 +3,1177 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Get2Short → Direct Link</title>
+<title>TheDrunkBots — Admin Control Panel</title>
 <style>
-  :root{--bg:#0e1116;--panel:#161b22;--line:#262d37;--text:#e6edf3;--mute:#8b949e;--acc:#4f8cff;--ok:#2ea043;--err:#f85149;--warn:#d29922}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-  .wrap{max-width:860px;margin:0 auto;padding:36px 20px 60px}
-  h1{font-size:26px;margin:0 0 4px}
-  .sub{color:var(--mute);margin:0 0 24px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px}
-  textarea{width:100%;min-height:74px;resize:vertical;background:#0b0e13;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:12px;font:14px ui-monospace,Consolas,monospace}
-  textarea:focus{outline:2px solid var(--acc);border-color:transparent}
-  .row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
-  button{border:0;border-radius:10px;padding:10px 18px;font-weight:600;font-size:14px;cursor:pointer;background:var(--acc);color:#fff}
-  button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
-  button:disabled{opacity:.5;cursor:default}
-  label{color:var(--mute);font-size:13px;display:flex;gap:6px;align-items:center}
-  .pill{font-size:12px;padding:3px 10px;border-radius:99px;border:1px solid var(--line);color:var(--mute);margin-left:auto}
-  .pill.ok{color:var(--ok);border-color:#2ea04366}.pill.down{color:var(--err);border-color:#f8514966}
-  .job{border:1px solid var(--line);border-radius:12px;margin-top:14px;overflow:hidden}
-  .job-h{display:flex;gap:10px;align-items:center;padding:10px 14px;background:#11161d;font-size:13px}
-  .job-h .src{font-family:ui-monospace,Consolas,monospace;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-  .st{font-weight:700;font-size:12px}
-  .st.running,.st.queued{color:var(--warn)}.st.ok{color:var(--ok)}.st.err{color:var(--err)}
-  .log{margin:0;padding:10px 14px;max-height:220px;overflow:auto;font:12.5px/1.55 ui-monospace,Consolas,monospace;color:#a9b4c0;white-space:pre-wrap;border-top:1px solid var(--line)}
-  .res{padding:14px;border-top:1px solid var(--line);background:#0f1a12}
-  .res.err{background:#1d0f10;color:#ffb4ae}
-  .res a{color:#7ee787;word-break:break-all;font-family:ui-monospace,Consolas,monospace;font-size:14px}
-  .res .meta{color:var(--mute);font-size:12px;margin-top:6px}
-  .res .row{margin-top:10px}
-  .hist{width:100%;border-collapse:collapse;font-size:13px}
-  .hist td{padding:7px 6px;border-top:1px solid var(--line);vertical-align:top}
-  .hist td a{color:#7ee787;word-break:break-all}
-  .hist .s{color:var(--mute);font-family:ui-monospace,Consolas,monospace;white-space:nowrap}
-  .spin{display:inline-block;width:10px;height:10px;border:2px solid var(--warn);border-right-color:transparent;border-radius:50%;animation:r .8s linear infinite}
-  @keyframes r{to{transform:rotate(360deg)}}
-  .empty{color:var(--mute);font-size:13px}
-  input[type=text]{flex:1;min-width:260px;background:#0b0e13;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:13px ui-monospace,Consolas,monospace}
-  .ipline{font-size:13px;margin-top:10px;color:var(--mute)}
-  .ipline b.good{color:var(--ok)} .ipline b.bad{color:var(--err)}
-  .hint{font-size:12.5px;color:var(--mute);margin-top:10px;line-height:1.6}
-  .hint code{background:#0b0e13;border:1px solid var(--line);border-radius:6px;padding:1px 6px}
-  #live{width:100%;border-radius:10px;border:1px solid var(--line);display:none;margin-top:10px;background:#fff}
-  details summary{cursor:pointer;color:var(--mute);font-size:13px}
+  :root {
+    --bg: #080b11;
+    --bg2: #0d121c;
+    --panel: #121826;
+    --panel-hover: #171f31;
+    --line: #222c42;
+    --text: #eef2ff;
+    --mute: #8c9bb8;
+    --acc: #7c5cff;
+    --acc2: #00d4ff;
+    --ok: #22c55e;
+    --err: #ef4444;
+    --warn: #f59e0b;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at 15% 0%, #17153a 0%, var(--bg) 42%), var(--bg);
+    color: var(--text);
+    font: 14.5px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  a { color: #67e8f9; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  /* Login View */
+  #loginView {
+    display: none;
+    min-height: 100vh;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 420px;
+    background: rgba(18, 24, 38, 0.92);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 32px 28px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+    text-align: center;
+  }
+  .brand-logo {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    margin: 0 auto 14px;
+    background: linear-gradient(135deg, var(--acc), var(--acc2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    box-shadow: 0 10px 25px rgba(124, 92, 255, 0.35);
+  }
+
+  /* Main App Layout */
+  #appView { display: none; }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: rgba(8, 11, 17, 0.88);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .brand-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 800;
+    font-size: 18px;
+    letter-spacing: 0.3px;
+  }
+  .brand-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: rgba(124, 92, 255, 0.18);
+    border: 1px solid rgba(124, 92, 255, 0.45);
+    color: #c4b5fd;
+    font-weight: 600;
+  }
+  .top-pills {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap;
+  }
+  .pill {
+    font-size: 12px;
+    padding: 4px 11px;
+    border-radius: 99px;
+    border: 1px solid var(--line);
+    background: var(--bg2);
+    color: var(--mute);
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .pill.ok { color: #4ade80; border-color: rgba(34, 197, 94, 0.4); background: rgba(34, 197, 94, 0.08); }
+  .pill.err { color: #f87171; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08); }
+  .pill.warn { color: #fbbf24; border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.08); }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 70px; }
+
+  /* Navigation Tabs */
+  .tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 22px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 12px;
+    overflow-x: auto;
+  }
+  .tab-btn {
+    background: var(--panel);
+    color: var(--mute);
+    border: 1px solid var(--line);
+    padding: 9px 16px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 13.5px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); border-color: #364566; }
+  .tab-btn.active {
+    background: linear-gradient(135deg, var(--acc), #5b3df5);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 6px 18px rgba(124, 92, 255, 0.3);
+  }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* Stats Grid */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .stat-box {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+  .stat-label { color: var(--mute); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-val { font-size: 24px; font-weight: 800; margin-top: 4px; color: var(--text); }
+  .stat-sub { font-size: 12px; color: var(--mute); margin-top: 2px; }
+
+  /* Cards & Forms */
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .card-h {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .card-title { font-size: 16px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--mute); margin-bottom: 5px; }
+  input[type=text], input[type=password], input[type=number], textarea, select {
+    width: 100%;
+    background: var(--bg2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font: 13.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    transition: border-color 0.15s;
+  }
+  textarea { min-height: 82px; resize: vertical; }
+  input:focus, textarea:focus { outline: none; border-color: var(--acc); box-shadow: 0 0 0 2px rgba(124, 92, 255, 0.22); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button {
+    border: 0;
+    border-radius: 10px;
+    padding: 9px 16px;
+    font-weight: 600;
+    font-size: 13.5px;
+    cursor: pointer;
+    background: linear-gradient(135deg, var(--acc), #5b3df5);
+    color: #fff;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  button:hover { opacity: 0.93; }
+  button:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button.ghost { background: var(--bg2); border: 1px solid var(--line); color: var(--text); }
+  button.ghost:hover { border-color: #3b4b6e; }
+  button.danger { background: rgba(239, 68, 68, 0.16); border: 1px solid rgba(239, 68, 68, 0.45); color: #fca5a5; }
+  button.ok-btn { background: rgba(34, 197, 94, 0.16); border: 1px solid rgba(34, 197, 94, 0.45); color: #86efac; }
+  button.sm { padding: 5px 10px; font-size: 12px; border-radius: 8px; }
+
+  .chk { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); cursor: pointer; user-select: none; }
+  .chk input { width: 16px; height: 16px; accent-color: var(--acc); }
+
+  /* Tables */
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--mute); font-weight: 600; padding: 10px 8px; border-bottom: 1px solid var(--line); font-size: 12px; text-transform: uppercase; }
+  td { padding: 10px 8px; border-bottom: 1px solid rgba(34, 44, 66, 0.65); vertical-align: top; }
+  tr:hover td { background: rgba(255, 255, 255, 0.015); }
+  .brk { word-break: break-all; }
+
+  /* Bypass Job Output */
+  .job { border: 1px solid var(--line); border-radius: 12px; margin-top: 14px; overflow: hidden; background: var(--bg2); }
+  .job-h { display: flex; gap: 10px; align-items: center; padding: 10px 14px; background: #0f1522; font-size: 13px; }
+  .job-h .src { color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .st { font-weight: 700; font-size: 12px; }
+  .st.running { color: var(--warn); }
+  .st.ok { color: var(--ok); }
+  .st.err { color: var(--err); }
+  .log { margin: 0; padding: 10px 14px; max-height: 200px; overflow: auto; font-size: 12px; color: #9fb0cc; white-space: pre-wrap; border-top: 1px solid var(--line); }
+  .res { padding: 14px; border-top: 1px solid var(--line); background: rgba(34, 197, 94, 0.07); }
+  .res.err { background: rgba(239, 68, 68, 0.09); color: #fca5a5; }
+
+  .toast {
+    position: fixed;
+    bottom: 22px;
+    right: 22px;
+    background: #1e293b;
+    color: #fff;
+    border: 1px solid var(--acc);
+    padding: 11px 18px;
+    border-radius: 12px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+    font-size: 13.5px;
+    font-weight: 600;
+    z-index: 999;
+    display: none;
+  }
+  .spin {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--warn);
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: r 0.75s linear infinite;
+  }
+  @keyframes r { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Get2Short → Direct Link</h1>
-  <p class="sub">Paste get2short links (one per line). The ads, timers, blog steps and Turnstile checks are handled in a hidden Chrome window, and you get the destination URL.</p>
 
-  <div class="card">
-    <div class="row" style="margin:0 0 8px"><b>Connection</b><span class="pill" id="netpill">checking…</span></div>
-    <div class="row" style="margin-top:0">
-      <input type="text" id="proxy" placeholder="http://user:pass@host:port  (empty = direct connection)" spellcheck="false">
-      <button class="ghost" id="saveProxy">Save</button>
-      <button class="ghost" id="testProxy">Test exit IP</button>
-    </div>
-    <div class="ipline" id="ipline"></div>
-    <details class="hint"><summary>Why a proxy? / how to use your home IP</summary>
-      get2short (step 1), the intermediate blogs (sayphotobooth.com, odiadance.com, …) and Cloudflare all reject
-      datacenter IPs (<code>ip_risk_blocked</code>), and the final <code>wp=</code> token is bound to the visitor IP.
-      When this runs on a server it needs a residential/mobile exit IP.<br>
-      Easiest: on your PC run <code>tools\home_proxy.bat</code>. It prints
-      <code>http://g2s:xxxx@xxxx.pinggy-free.link:port</code>; paste that here, then press Save and Test.
-      Any residential HTTP proxy works too.
-    </details>
-  </div>
-
-  <div class="card">
-    <textarea id="urls" placeholder="https://get2short.com/4mEa" spellcheck="false"></textarea>
-    <div class="row">
-      <button id="go">Generate direct link</button>
-      <label><input type="checkbox" id="force"> Force (ignore cache)</label>
-      <span class="pill" id="solver">solver: checking…</span>
-    </div>
-    <div id="jobs"></div>
-    <img id="live" alt="live browser view">
-  </div>
-
-  <div class="card">
-    <div class="row" style="margin:0 0 6px"><b>History</b>
-      <button class="ghost" id="clear" style="margin-left:auto;padding:5px 12px">Clear</button></div>
-    <table class="hist" id="hist"></table>
+<!-- ==================== LOGIN VIEW ==================== -->
+<div id="loginView">
+  <div class="login-card">
+    <div class="brand-logo">🍹</div>
+    <h2 style="margin:0 0 6px;font-size:22px" id="loginBrand">TheDrunkBots</h2>
+    <p style="color:var(--mute);margin:0 0 22px;font-size:13.5px">Admin Control Panel • Protected Access</p>
+    <form id="loginForm">
+      <div class="field" style="text-align:left">
+        <label>Admin Password</label>
+        <input type="password" id="loginPass" placeholder="Enter admin password…" required autofocus>
+      </div>
+      <div id="loginErr" style="color:var(--err);font-size:13px;margin-bottom:10px;display:none"></div>
+      <button type="submit" style="width:100%;padding:11px">Unlock Admin Panel →</button>
+    </form>
   </div>
 </div>
 
+<!-- ==================== MAIN ADMIN APP ==================== -->
+<div id="appView">
+  <header class="topbar">
+    <div class="brand-title">
+      <span style="font-size:22px">🍹</span>
+      <span id="topBrand">TheDrunkBots</span>
+      <span class="brand-badge">ADMIN PANEL v2</span>
+    </div>
+    <div class="top-pills">
+      <span class="pill" id="pillMongo">MongoDB: …</span>
+      <span class="pill" id="pillBot">Bot: …</span>
+      <span class="pill" id="pillProxy">Tunnel: …</span>
+      <span class="pill" id="pillSolver">Solver: …</span>
+      <button class="ghost sm" id="logoutBtn">Logout</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="tabDash">📊 Overview &amp; Tunnel</button>
+      <button class="tab-btn" data-tab="tabCache">🗄 Cloud Cache (<span id="cntCache">0</span>)</button>
+      <button class="tab-btn" data-tab="tabBot">🤖 Bot &amp; Force-Sub (<span id="cntFsub">0</span>)</button>
+      <button class="tab-btn" data-tab="tabLogs">🚨 Error Logs (<span id="cntLogs">0</span>)</button>
+      <button class="tab-btn" data-tab="tabUsers">👥 Users &amp; Broadcast (<span id="cntUsers">0</span>)</button>
+      <button class="tab-btn" data-tab="tabSettings">⚙️ Engine &amp; Security</button>
+    </nav>
+
+    <!-- ================= TAB 1: DASHBOARD & TUNNEL ================= -->
+    <section class="tab-pane active" id="tabDash">
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-label">Total Bypassed</div>
+          <div class="stat-val" id="stBypassed">0</div>
+          <div class="stat-sub">Direct links solved</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Cloud Cache Hits</div>
+          <div class="stat-val" id="stCacheHits">0</div>
+          <div class="stat-sub"><span id="stCacheCount">0</span> links cached</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Telegram Users</div>
+          <div class="stat-val" id="stUsers">0</div>
+          <div class="stat-sub" id="stBotName">Bot status</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Error Reports</div>
+          <div class="stat-val" id="stErrors">0</div>
+          <div class="stat-sub">Synced with Telegram</div>
+        </div>
+      </div>
+
+      <!-- Tunnel / Proxy Control -->
+      <div class="card">
+        <div class="card-h">
+          <h3 class="card-title">🌐 Residential Tunnel / Proxy Manager</h3>
+          <span class="pill" id="proxyBadge">checking…</span>
+        </div>
+        <div class="row">
+          <input type="text" id="proxyInput" placeholder="http://user:pass@xxxx.run.pinggy-free.link:port  (empty = direct)" style="flex:1;min-width:260px" spellcheck="false">
+          <button id="saveProxyBtn">Save &amp; Sync Tunnel</button>
+          <button class="ghost" id="testProxyBtn">Test Exit IP</button>
+          <button class="danger" id="clearProxyBtn">Direct (Off)</button>
+        </div>
+        <div id="ipLine" style="font-size:13px;color:var(--mute);margin-top:10px"></div>
+      </div>
+
+      <!-- Direct Admin Bypass Tester -->
+      <div class="card">
+        <div class="card-h">
+          <h3 class="card-title">⚡ Admin Bypass Tester</h3>
+          <label class="chk"><input type="checkbox" id="forceBypass"> Force fresh solve (ignore cache)</label>
+        </div>
+        <textarea id="testUrls" placeholder="Paste one or more shortlinks (one per line) to test bypassing…" spellcheck="false"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button id="runBypassBtn">🚀 Bypass Link(s)</button>
+          <span style="font-size:12.5px;color:var(--mute)">Live browser preview is disabled for performance &amp; security. Step logs stream below.</span>
+        </div>
+        <div id="jobsBox"></div>
+      </div>
+    </section>
+
+    <!-- ================= TAB 2: CLOUD CACHE CRUD ================= -->
+    <section class="tab-pane" id="tabCache">
+      <div class="card">
+        <div class="card-h">
+          <h3 class="card-title">➕ Add / Edit Cached Link (Instant MongoDB Sync)</h3>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Original Shortlink URL</label>
+            <input type="text" id="cacheSrcInput" placeholder="https://lksfy.com/jYJn8qdKYQ">
+          </div>
+          <div class="field">
+            <label>Bypassed Destination URL</label>
+            <input type="text" id="cacheDestInput" placeholder="https://telegram.me/...">
+          </div>
+        </div>
+        <div class="row">
+          <button id="saveCacheItemBtn">💾 Save / Update Cache Entry</button>
+          <button class="ghost" id="resetCacheFormBtn">Clear Form</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <h3 class="card-title">🗄 Cached Links Database</h3>
+          <div class="row">
+            <input type="text" id="cacheSearchInput" placeholder="Search shortlink or destination…" style="width:240px">
+            <button class="ghost sm" id="refreshCacheBtn">🔄 Refresh</button>
+            <button class="danger sm" id="clearAllCacheBtn">🗑 Clear All Cache</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Shortlink (Source)</th>
+                <th>Bypassed Destination</th>
+                <th>Hits / Time</th>
+                <th>Updated</th>
+                <th style="text-align:right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="cacheTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TAB 3: BOT & FORCE-SUB ================= -->
+    <section class="tab-pane" id="tabBot">
+      <div class="card">
+        <div class="card-h">
+          <h3 class="card-title">🤖 Telegram Bot Credentials &amp; Owner Access</h3>
+          <span class="pill" id="botConnPill">checking…</span>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Telegram Bot Token (@BotFather)</label>
+            <input type="text" id="botTokenInput" placeholder="1234567890:AAH...">
+          </div>
+          <div class="field">
+            <label>Owner Telegram User ID (receives tunnel &amp; error alerts)</label>
+            <input type="number" id="ownerIdInput" placeholder="e.g. 6123456789">
+          </div>
+          <div class="field">
+            <label>Telegram API ID (my.telegram.org)</label>
+            <input type="number" id="apiIdInput" placeholder="e.g. 12345678">
+          </div>
+          <div class="field">
+            <label>Telegram API Hash (my.telegram.org)</label>
+            <input type="text" id="apiHashInput" placeholder="e.g. a1b2c3d4e5f6...">
+          </div>
+          <div class="field">
+            <label>Additional Admin User IDs (comma-separated)</label>
+            <input type="text" id="adminIdsInput" placeholder="6123456789, 7123456789">
+          </div>
+          <div class="field">
+            <label>Brand Name</label>
+            <input type="text" id="brandNameInput" placeholder="TheDrunkBots">
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>/start Welcome Photo URL</label>
+            <input type="text" id="startPhotoInput" placeholder="https://i.ibb.co/1Nx1jMn/IMG-20261005-021725.png">
+          </div>
+          <div class="field">
+            <label>Updates Channel Link / @Username</label>
+            <input type="text" id="updatesChanInput" placeholder="https://t.me/TheDrunkBots">
+          </div>
+        </div>
+        <div class="field">
+          <label>/start Welcome Caption Template (HTML allowed; placeholders: <code>{first_name}</code>, <code>{brand}</code>)</label>
+          <textarea id="welcomeMsgInput" style="min-height:110px"></textarea>
+        </div>
+        <div class="row" style="margin-bottom:14px">
+          <label class="chk"><input type="checkbox" id="maintModeChk"> 🛠 Maintenance Mode (pause non-admin users)</label>
+          <label class="chk"><input type="checkbox" id="protectContentChk"> 🔒 Protect Bot Messages (disable forwarding)</label>
+        </div>
+        <button id="saveBotSettingsBtn">💾 Save &amp; Sync Bot Configuration</button>
+      </div>
+
+      <!-- Force-Subscribe Channels Manager -->
+      <div class="card">
+        <div class="card-h">
+          <h3 class="card-title">📢 Force-Subscribe Channels</h3>
+          <label class="chk"><input type="checkbox" id="fsubEnabledChk"> Enable Force-Subscribe</label>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Channel @Username or Chat ID (-100…)</label>
+            <input type="text" id="fsubChatIdInput" placeholder="@TheDrunkBots or -1001234567890">
+          </div>
+          <div class="field">
+            <label>Button Title</label>
+            <input type="text" id="fsubTitleInput" placeholder="TheDrunkBots Official">
+          </div>
+        </div>
+        <div class="field">
+          <label>Invite Link (optional for public @channels, required for private -100 channels)</label>
+          <input type="text" id="fsubInviteInput" placeholder="https://t.me/TheDrunkBots or https://t.me/+xxxx">
+        </div>
+        <button id="addFsubBtn">➕ Add / Update Force-Sub Channel</button>
+
+        <div class="tbl-wrap" style="margin-top:16px">
+          <table>
+            <thead>
+              <tr>
+                <th>Channel ID / @Username</th>
+                <th>Title</th>
+                <th>Invite Link</th>
+                <th style="text-align:right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="fsubTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TAB 4: ERROR LOGS ================= -->
+    <section class="tab-pane" id="tabLogs">
+      <div class="card">
+        <div class="card-h">
+          <h3 class="card-title">🚨 Complete Bypass Error Logs</h3>
+          <div class="row">
+            <button class="ghost sm" id="refreshLogsBtn">🔄 Refresh</button>
+            <button class="danger sm" id="clearAllLogsBtn">🗑 Clear All Logs</button>
+          </div>
+        </div>
+        <div id="logsContainer"></div>
+      </div>
+    </section>
+
+    <!-- ================= TAB 5: USERS & BROADCAST ================= -->
+    <section class="tab-pane" id="tabUsers">
+      <div class="card">
+        <div class="card-h">
+          <h3 class="card-title">📢 Broadcast Message to All Telegram Users</h3>
+        </div>
+        <div class="field">
+          <label>Announcement Text (Telegram HTML formatting supported)</label>
+          <textarea id="broadcastTextInput" placeholder="<b>🚀 New Update!</b> All links are now bypassing even faster!"></textarea>
+        </div>
+        <div class="row">
+          <button id="sendBroadcastBtn">📢 Send Broadcast Now</button>
+          <span id="broadcastResult" style="font-size:13px;color:var(--mute)"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <h3 class="card-title">👥 Registered Bot Users</h3>
+          <div class="row">
+            <input type="text" id="userSearchInput" placeholder="Search ID, name or @username…" style="width:240px">
+            <button class="ghost sm" id="refreshUsersBtn">🔄 Refresh</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>User ID</th>
+                <th>Name / Username</th>
+                <th>Bypassed</th>
+                <th>Last Active</th>
+                <th>Status</th>
+                <th style="text-align:right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TAB 6: ENGINE & SECURITY SETTINGS ================= -->
+    <section class="tab-pane" id="tabSettings">
+      <div class="card">
+        <div class="card-h">
+          <h3 class="card-title">⚙️ Engine, Cache &amp; Security Configuration</h3>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Web Admin Panel Password</label>
+            <input type="text" id="adminPassInput" placeholder="admin123">
+          </div>
+          <div class="field">
+            <label>MongoDB Atlas Connection URI</label>
+            <input type="text" id="mongoUriInput" placeholder="mongodb+srv://...">
+          </div>
+          <div class="field">
+            <label>Turnstile Solver URL</label>
+            <input type="text" id="solverUrlInput" placeholder="https://cf.vltcx.eu.cc">
+          </div>
+          <div class="field">
+            <label>Cache TTL (Hours)</label>
+            <input type="number" step="0.5" id="cacheHoursInput" placeholder="24">
+          </div>
+          <div class="field">
+            <label>Timer Acceleration Factor (0.1 = 10x faster)</label>
+            <input type="number" step="0.05" id="accelInput" placeholder="0.1">
+          </div>
+          <div class="field">
+            <label>Max Bypass Timeout (Seconds)</label>
+            <input type="number" id="timeoutInput" placeholder="300">
+          </div>
+        </div>
+        <div class="row" style="margin-bottom:14px">
+          <label class="chk"><input type="checkbox" id="cacheEnabledChk"> 🚀 Enable Cloud Link Caching</label>
+        </div>
+        <button id="saveEngineSettingsBtn">💾 Save Engine &amp; Security Settings</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
 <script>
 const $ = s => document.querySelector(s);
-const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-async function health(){
-  try{ const h = await (await fetch('/api/health')).json();
-    const p = $('#solver'); p.textContent = 'solver: ' + h.solver; p.className = 'pill ' + h.solver;
-    p.title = h.solver_url + '\n' + JSON.stringify(h.detail);
-  }catch(e){}
+function showToast(msg, isErr = false) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.style.borderColor = isErr ? 'var(--err)' : 'var(--acc)';
+  t.style.display = 'block';
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => { t.style.display = 'none'; }, 3200);
 }
 
-async function history(){
-  const items = await (await fetch('/api/history')).json();
-  $('#hist').innerHTML = items.length ? items.map(i => `<tr><td class="s">${esc(i.source.replace(/^https?:\/\//,''))}</td>
-    <td><a href="${esc(i.url)}" target="_blank" rel="noreferrer">${esc(i.url)}</a></td>
-    <td class="s">${new Date(i.at*1000).toLocaleString()}</td></tr>`).join('')
-    : '<tr><td class="empty">No links resolved yet.</td></tr>';
-}
-
-function jobBox(id, src){
-  const d = document.createElement('div'); d.className = 'job'; d.id = 'j' + id;
-  d.innerHTML = `<div class="job-h"><span class="st running"><span class="spin"></span> working</span>
-    <span class="src">${esc(src)}</span></div><pre class="log"></pre>`;
-  $('#jobs').prepend(d); return d;
-}
-
-function finish(box, job){
-  const st = box.querySelector('.st');
-  const r = document.createElement('div');
-  if (job.result){
-    st.className = 'st ok'; st.textContent = job.result.cached ? '✔ cached' : `✔ ${job.result.elapsed}s`;
-    r.className = 'res';
-    r.innerHTML = `<a href="${esc(job.result.url)}" target="_blank" rel="noreferrer">${esc(job.result.url)}</a>
-      <div class="meta">via ${esc(job.result.method || '')} · ${(job.result.steps||[]).length} pages handled automatically</div>
-      <div class="row"><button class="cp">Copy</button><button class="ghost op">Open</button></div>`;
-    r.querySelector('.cp').onclick = e => { navigator.clipboard.writeText(job.result.url); e.target.textContent = 'Copied ✓'; };
-    r.querySelector('.op').onclick = () => window.open(job.result.url, '_blank', 'noreferrer');
-    box.querySelector('.log').style.maxHeight = '120px';
-  } else {
-    st.className = 'st err'; st.textContent = '✖ failed';
-    r.className = 'res err'; r.textContent = job.error || 'failed';
+async function api(url, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  if (opts.body && typeof opts.body === 'object') {
+    headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(opts.body);
   }
-  box.appendChild(r);
-  history();
+  const tok = localStorage.getItem('g2s_admin_token');
+  if (tok) headers['Authorization'] = 'Bearer ' + tok;
+  const r = await fetch(url, { ...opts, headers });
+  if (r.status === 401 && !url.includes('/api/auth/')) {
+    showLogin();
+    throw new Error('Unauthorized');
+  }
+  return r.json();
 }
 
-$('#go').onclick = async () => {
-  const url = $('#urls').value.trim(); if (!url) return;
-  $('#go').disabled = true;
-  try{
-    const res = await (await fetch('/api/jobs', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({url, force: $('#force').checked})})).json();
-    const lines = url.split(/\n/).map(s=>s.trim()).filter(Boolean);
-    (res.jobs||[]).forEach((id, i) => {
-      const box = jobBox(id, lines[i]); const log = box.querySelector('.log');
+function showLogin() {
+  $('#appView').style.display = 'none';
+  $('#loginView').style.display = 'flex';
+}
+
+function showApp() {
+  $('#loginView').style.display = 'none';
+  $('#appView').style.display = 'block';
+  refreshAll();
+}
+
+// Tabs switching
+$$('.tab-btn').forEach(btn => {
+  btn.onclick = () => {
+    $$('.tab-btn').forEach(b => b.classList.remove('active'));
+    $$('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    $('#' + btn.dataset.tab).classList.add('active');
+    const t = btn.dataset.tab;
+    if (t === 'tabCache') loadCache();
+    if (t === 'tabLogs') loadLogs();
+    if (t === 'tabUsers') loadUsers();
+    if (t === 'tabBot' || t === 'tabSettings') loadSettings();
+  };
+});
+
+// Login / Logout
+$('#loginForm').onsubmit = async e => {
+  e.preventDefault();
+  $('#loginErr').style.display = 'none';
+  try {
+    const r = await api('/api/auth/login', { method: 'POST', body: { password: $('#loginPass').value } });
+    if (!r.ok) {
+      $('#loginErr').textContent = r.error || 'Invalid password';
+      $('#loginErr').style.display = 'block';
+      return;
+    }
+    localStorage.setItem('g2s_admin_token', r.token);
+    $('#loginPass').value = '';
+    showApp();
+  } catch (err) {
+    $('#loginErr').textContent = 'Login failed';
+    $('#loginErr').style.display = 'block';
+  }
+};
+
+$('#logoutBtn').onclick = async () => {
+  localStorage.removeItem('g2s_admin_token');
+  await fetch('/api/auth/logout', { method: 'POST' });
+  showLogin();
+};
+
+// Dashboard & Health
+async function loadDashboard() {
+  const [d, h] = await Promise.all([api('/api/dashboard'), api('/api/health')]);
+  $('#topBrand').textContent = d.brand || 'TheDrunkBots';
+  $('#loginBrand').textContent = d.brand || 'TheDrunkBots';
+
+  $('#stBypassed').textContent = d.stats.total_bypasses;
+  $('#stCacheHits').textContent = d.stats.cache_hits;
+  $('#stCacheCount').textContent = d.cache_count;
+  $('#stUsers').textContent = d.users_count;
+  $('#stErrors').textContent = d.logs_count;
+
+  $('#cntCache').textContent = d.cache_count;
+  $('#cntFsub').textContent = d.fsub_count;
+  $('#cntLogs').textContent = d.logs_count;
+  $('#cntUsers').textContent = d.users_count;
+
+  const pm = $('#pillMongo');
+  pm.textContent = d.mongo_connected ? 'MongoDB: Connected' : 'MongoDB: Local Fallback';
+  pm.className = 'pill ' + (d.mongo_connected ? 'ok' : 'warn');
+
+  const pb = $('#pillBot');
+  if (d.bot_running && d.bot_info) {
+    pb.textContent = 'Bot: @' + d.bot_info.username;
+    pb.className = 'pill ok';
+    $('#stBotName').textContent = '@' + d.bot_info.username + ' (Online)';
+  } else {
+    pb.textContent = 'Bot: Offline';
+    pb.className = 'pill warn';
+    $('#stBotName').textContent = 'Set token in Bot tab';
+  }
+
+  const pp = $('#pillProxy');
+  const pBadge = $('#proxyBadge');
+  if (d.has_proxy && !d.proxy_expired) {
+    pp.textContent = 'Tunnel: Active';
+    pp.className = 'pill ok';
+    pBadge.textContent = 'Active: ' + (d.proxy_masked || '');
+    pBadge.className = 'pill ok';
+  } else if (d.proxy_expired) {
+    pp.textContent = 'Tunnel: EXPIRED';
+    pp.className = 'pill err';
+    pBadge.textContent = 'Tunnel Expired — Please Renew!';
+    pBadge.className = 'pill err';
+  } else {
+    pp.textContent = 'Tunnel: Direct';
+    pp.className = 'pill warn';
+    pBadge.textContent = 'Direct Connection (No Proxy)';
+    pBadge.className = 'pill warn';
+  }
+
+  const ps = $('#pillSolver');
+  ps.textContent = 'Solver: ' + h.solver;
+  ps.className = 'pill ' + (h.solver === 'ok' ? 'ok' : 'err');
+}
+
+// Tunnel / Proxy Controls
+async function testExitIp() {
+  $('#ipLine').textContent = 'Testing exit IP…';
+  const r = await api('/api/proxy-test');
+  if (!r.ok) {
+    $('#ipLine').innerHTML = `<b style="color:var(--err)">Tunnel Error:</b> ${esc(r.error)}`;
+    return;
+  }
+  const color = r.datacenter ? 'var(--err)' : 'var(--ok)';
+  const label = r.datacenter ? '⚠️ Datacenter IP (may be blocked by Cloudflare)' : '✅ Residential / Home IP Verified';
+  $('#ipLine').innerHTML = `Exit IP: <b style="color:${color}">${esc(r.ip)}</b> · ${esc([r.city, r.region, r.country].filter(Boolean).join(', '))} · ${esc(r.org || '')} — <b style="color:${color}">${label}</b>`;
+  loadDashboard();
+}
+
+$('#saveProxyBtn').onclick = async () => {
+  const px = $('#proxyInput').value.trim();
+  $('#saveProxyBtn').disabled = true;
+  $('#ipLine').textContent = 'Applying tunnel proxy & restarting browser…';
+  try {
+    const r = await api('/api/settings', { method: 'POST', body: { proxy: px } });
+    if (r.error) { showToast(r.error, true); return; }
+    showToast('Tunnel proxy updated & synced!');
+    await testExitIp();
+  } finally {
+    $('#saveProxyBtn').disabled = false;
+  }
+};
+
+$('#clearProxyBtn').onclick = async () => {
+  $('#proxyInput').value = '';
+  $('#clearProxyBtn').disabled = true;
+  try {
+    await api('/api/settings', { method: 'POST', body: { proxy: '' } });
+    showToast('Switched to direct connection');
+    await testExitIp();
+  } finally {
+    $('#clearProxyBtn').disabled = false;
+  }
+};
+
+$('#testProxyBtn').onclick = testExitIp;
+
+// Admin Bypass Tester
+function createJobCard(id, src) {
+  const d = document.createElement('div');
+  d.className = 'job';
+  d.innerHTML = `<div class="job-h"><span class="st running"><span class="spin"></span> Bypassing…</span>
+    <span class="src mono">${esc(src)}</span></div><pre class="log"></pre>`;
+  $('#jobsBox').prepend(d);
+  return d;
+}
+
+$('#runBypassBtn').onclick = async () => {
+  const url = $('#testUrls').value.trim();
+  if (!url) return;
+  $('#runBypassBtn').disabled = true;
+  try {
+    const res = await api('/api/jobs', { method: 'POST', body: { url, force: $('#forceBypass').checked } });
+    const lines = url.split(/\n/).map(s => s.trim()).filter(Boolean);
+    (res.jobs || []).forEach((id, i) => {
+      const box = createJobCard(id, lines[i]);
+      const log = box.querySelector('.log');
       const es = new EventSource(`/api/jobs/${id}/events`);
-      es.onmessage = ev => { const m = JSON.parse(ev.data);
-        if (m.log){ log.textContent += m.log + '\n'; log.scrollTop = log.scrollHeight; }
-        if (m.done){ es.close(); finish(box, m.done); } };
+      es.onmessage = ev => {
+        const m = JSON.parse(ev.data);
+        if (m.log) { log.textContent += m.log + '\n'; log.scrollTop = log.scrollHeight; }
+        if (m.done) {
+          es.close();
+          const st = box.querySelector('.st');
+          const r = document.createElement('div');
+          if (m.done.result) {
+            const out = m.done.result;
+            st.className = 'st ok';
+            st.textContent = out.cached ? '✔ CACHED (0.01s)' : `✔ ${out.elapsed}s`;
+            r.className = 'res';
+            r.innerHTML = `<div class="mono brk" style="font-size:14px;margin-bottom:8px"><a href="${esc(out.url)}" target="_blank" rel="noreferrer">${esc(out.url)}</a></div>
+              <div class="row"><button class="sm cp">Copy Link 📋</button><button class="ghost sm op">Open Link ↗️</button></div>`;
+            r.querySelector('.cp').onclick = e => { navigator.clipboard.writeText(out.url); e.target.textContent = 'Copied ✓'; };
+            r.querySelector('.op').onclick = () => window.open(out.url, '_blank', 'noreferrer');
+          } else {
+            st.className = 'st err';
+            st.textContent = '✖ Failed';
+            r.className = 'res err';
+            r.textContent = m.done.error || 'Failed';
+          }
+          box.appendChild(r);
+          loadDashboard();
+        }
+      };
     });
-    $('#urls').value = '';
-  } finally { $('#go').disabled = false; }
+    $('#testUrls').value = '';
+  } finally {
+    $('#runBypassBtn').disabled = false;
+  }
 };
-$('#urls').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('#go').click(); });
-$('#clear').onclick = async () => { await fetch('/api/history', {method:'DELETE'}); history(); };
-// ---- connection / proxy
-async function settings(){
-  const st = await (await fetch('/api/settings')).json();
-  $('#proxy').placeholder = st.proxy ? ('current: ' + st.proxy + '   (type a new one or clear + Save)') : 'http://user:pass@host:port  (empty = direct connection)';
-  $('#netpill').textContent = st.has_proxy ? 'via proxy' : 'direct';
-  return st;
+
+// Cloud Cache CRUD
+async function loadCache() {
+  const q = $('#cacheSearchInput').value.trim();
+  const items = await api('/api/cache?q=' + encodeURIComponent(q));
+  $('#cntCache').textContent = items.length;
+  const tb = $('#cacheTableBody');
+  if (!items.length) {
+    tb.innerHTML = `<tr><td colspan="5" style="color:var(--mute);text-align:center;padding:24px">No cached links found.</td></tr>`;
+    return;
+  }
+  tb.innerHTML = items.map(item => `
+    <tr>
+      <td class="mono brk" style="max-width:260px">${esc(item.source)}</td>
+      <td class="mono brk" style="max-width:340px"><a href="${esc(item.url)}" target="_blank" rel="noreferrer">${esc(item.url)}</a></td>
+      <td class="mono">${item.hits || 0} hits · ${item.elapsed || 0}s</td>
+      <td style="white-space:nowrap;color:var(--mute)">${new Date((item.at || 0) * 1000).toLocaleString()}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="ghost sm edit-cache" data-src="${esc(item.source)}" data-url="${esc(item.url)}">✏️ Edit</button>
+        <button class="ghost sm copy-cache" data-url="${esc(item.url)}">📋</button>
+        <button class="danger sm del-cache" data-src="${esc(item.source)}">🗑</button>
+      </td>
+    </tr>
+  `).join('');
+
+  tb.querySelectorAll('.edit-cache').forEach(b => {
+    b.onclick = () => {
+      $('#cacheSrcInput').value = b.dataset.src;
+      $('#cacheDestInput').value = b.dataset.url;
+      $('#cacheSrcInput').focus();
+      showToast('Loaded into editor above');
+    };
+  });
+  tb.querySelectorAll('.copy-cache').forEach(b => {
+    b.onclick = () => { navigator.clipboard.writeText(b.dataset.url); showToast('Copied destination URL!'); };
+  });
+  tb.querySelectorAll('.del-cache').forEach(b => {
+    b.onclick = async () => {
+      await api('/api/cache?source=' + encodeURIComponent(b.dataset.src), { method: 'DELETE' });
+      showToast('Deleted cache entry');
+      loadCache();
+      loadDashboard();
+    };
+  });
 }
-async function testIp(){
-  $('#ipline').textContent = 'Testing exit IP…';
-  const r = await (await fetch('/api/proxy-test')).json();
-  if (!r.ok){ $('#ipline').innerHTML = '<b class="bad">Proxy error:</b> ' + esc(r.error); $('#netpill').className='pill down'; return; }
-  const cls = r.datacenter ? 'bad' : 'good';
-  $('#ipline').innerHTML = `Exit IP <b class="${cls}">${esc(r.ip)}</b> · ${esc([r.city,r.region,r.country].filter(Boolean).join(', '))} · ${esc(r.org||'')}` +
-    (r.datacenter ? ' — <b class="bad">datacenter IP, get2short will block it</b>' : ' — <b class="good">looks residential ✓</b>');
-  $('#netpill').className = 'pill ' + (r.datacenter ? 'down' : 'ok');
-}
-$('#saveProxy').onclick = async () => {
-  $('#saveProxy').disabled = true; $('#ipline').textContent = 'Restarting browser with new proxy…';
-  try{
-    const r = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({proxy: $('#proxy').value.trim()})});
-    const d = await r.json(); if (d.error){ $('#ipline').textContent = d.error; return; }
-    $('#proxy').value = ''; await settings(); await testIp();
-  } finally { $('#saveProxy').disabled = false; }
+
+$('#saveCacheItemBtn').onclick = async () => {
+  const source = $('#cacheSrcInput').value.trim();
+  const url = $('#cacheDestInput').value.trim();
+  if (!source || !url) { showToast('Enter both shortlink and destination URL', true); return; }
+  await api('/api/cache', { method: 'POST', body: { source, url } });
+  showToast('Saved to MongoDB Cloud Cache!');
+  $('#cacheSrcInput').value = '';
+  $('#cacheDestInput').value = '';
+  loadCache();
+  loadDashboard();
 };
-$('#testProxy').onclick = testIp;
 
-// ---- live browser view while jobs run
-let liveTimer = null;
-function liveTick(){
-  const running = document.querySelectorAll('.st.running').length > 0;
-  const img = $('#live');
-  if (!running){ img.style.display = 'none'; return; }
-  const n = new Image();
-  n.onload = () => { img.src = n.src; img.style.display = 'block'; };
-  n.src = '/api/screenshot?t=' + Date.now();
+$('#resetCacheFormBtn').onclick = () => { $('#cacheSrcInput').value = ''; $('#cacheDestInput').value = ''; };
+$('#refreshCacheBtn').onclick = loadCache;
+$('#cacheSearchInput').oninput = loadCache;
+$('#clearAllCacheBtn').onclick = async () => {
+  if (!confirm('Clear all cached links from MongoDB and memory?')) return;
+  await api('/api/cache?all=1', { method: 'DELETE' });
+  showToast('Cleared all cache');
+  loadCache();
+  loadDashboard();
+};
+
+// Settings & Force-Sub CRUD
+async function loadSettings() {
+  const s = await api('/api/settings');
+  $('#proxyInput').value = s.proxy || '';
+  $('#botTokenInput').value = s.telegram_bot_token || '';
+  $('#ownerIdInput').value = s.owner_id || '';
+  $('#apiIdInput').value = s.telegram_api_id || '';
+  $('#apiHashInput').value = s.telegram_api_hash || '';
+  $('#adminIdsInput').value = (s.admin_ids || []).join(', ');
+  $('#brandNameInput').value = s.brand_name || 'TheDrunkBots';
+  $('#startPhotoInput').value = s.start_photo || '';
+  $('#updatesChanInput').value = s.updates_channel || '';
+  $('#welcomeMsgInput').value = s.welcome_message || '';
+  $('#maintModeChk').checked = !!s.maintenance_mode;
+  $('#protectContentChk').checked = !!s.protect_content;
+  $('#fsubEnabledChk').checked = s.force_sub_enabled !== false;
+
+  $('#adminPassInput').value = s.admin_password || '';
+  $('#mongoUriInput').value = s.mongo_uri || '';
+  $('#solverUrlInput').value = s.solver_url || '';
+  $('#cacheHoursInput').value = s.cache_hours ?? 24;
+  $('#accelInput').value = s.accel_factor ?? 0.1;
+  $('#timeoutInput').value = s.timeout ?? 300;
+  $('#cacheEnabledChk').checked = s.cache_enabled !== false;
+
+  const bp = $('#botConnPill');
+  if (s.bot_running && s.bot_info) {
+    bp.textContent = 'Connected: @' + s.bot_info.username;
+    bp.className = 'pill ok';
+  } else {
+    bp.textContent = 'Bot Not Connected';
+    bp.className = 'pill warn';
+  }
+
+  renderFsubTable(s.force_sub_channels || []);
 }
-setInterval(liveTick, 1500);
 
-health(); history(); settings().then(testIp); setInterval(health, 30000);
+function renderFsubTable(channels) {
+  $('#cntFsub').textContent = channels.length;
+  const tb = $('#fsubTableBody');
+  if (!channels.length) {
+    tb.innerHTML = `<tr><td colspan="4" style="color:var(--mute);text-align:center;padding:18px">No Force-Subscribe channels added yet.</td></tr>`;
+    return;
+  }
+  tb.innerHTML = channels.map(c => `
+    <tr>
+      <td class="mono">${esc(c.chat_id)}</td>
+      <td><b>${esc(c.title || c.chat_id)}</b></td>
+      <td class="mono brk"><a href="${esc(c.invite_link)}" target="_blank" rel="noreferrer">${esc(c.invite_link)}</a></td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="ghost sm edit-fsub" data-cid="${esc(c.chat_id)}" data-title="${esc(c.title || '')}" data-inv="${esc(c.invite_link || '')}">✏️ Edit</button>
+        <button class="danger sm del-fsub" data-cid="${esc(c.chat_id)}">🗑 Remove</button>
+      </td>
+    </tr>
+  `).join('');
+
+  tb.querySelectorAll('.edit-fsub').forEach(b => {
+    b.onclick = () => {
+      $('#fsubChatIdInput').value = b.dataset.cid;
+      $('#fsubTitleInput').value = b.dataset.title;
+      $('#fsubInviteInput').value = b.dataset.inv;
+    };
+  });
+  tb.querySelectorAll('.del-fsub').forEach(b => {
+    b.onclick = async () => {
+      const r = await api('/api/fsub?chat_id=' + encodeURIComponent(b.dataset.cid), { method: 'DELETE' });
+      renderFsubTable(r.channels || []);
+      showToast('Removed Force-Sub channel');
+      loadDashboard();
+    };
+  });
+}
+
+$('#saveBotSettingsBtn').onclick = async () => {
+  $('#saveBotSettingsBtn').disabled = true;
+  try {
+    await api('/api/settings', {
+      method: 'POST',
+      body: {
+        telegram_bot_token: $('#botTokenInput').value.trim(),
+        owner_id: $('#ownerIdInput').value.trim(),
+        telegram_api_id: $('#apiIdInput').value.trim(),
+        telegram_api_hash: $('#apiHashInput').value.trim(),
+        admin_ids: $('#adminIdsInput').value.trim(),
+        brand_name: $('#brandNameInput').value.trim() || 'TheDrunkBots',
+        start_photo: $('#startPhotoInput').value.trim(),
+        updates_channel: $('#updatesChanInput').value.trim(),
+        welcome_message: $('#welcomeMsgInput').value,
+        maintenance_mode: $('#maintModeChk').checked,
+        protect_content: $('#protectContentChk').checked,
+      }
+    });
+    showToast('Bot configuration saved & synced!');
+    await loadSettings();
+    await loadDashboard();
+  } finally {
+    $('#saveBotSettingsBtn').disabled = false;
+  }
+};
+
+$('#fsubEnabledChk').onchange = async () => {
+  await api('/api/fsub', { method: 'POST', body: { enabled: $('#fsubEnabledChk').checked } });
+  showToast('Force-Subscribe setting updated');
+};
+
+$('#addFsubBtn').onclick = async () => {
+  const chat_id = $('#fsubChatIdInput').value.trim();
+  const title = $('#fsubTitleInput').value.trim();
+  const invite_link = $('#fsubInviteInput').value.trim();
+  if (!chat_id) { showToast('Enter channel @username or -100 chat ID', true); return; }
+  const r = await api('/api/fsub', { method: 'POST', body: { chat_id, title, invite_link } });
+  renderFsubTable(r.channels || []);
+  $('#fsubChatIdInput').value = '';
+  $('#fsubTitleInput').value = '';
+  $('#fsubInviteInput').value = '';
+  showToast('Force-Sub channel saved!');
+  loadDashboard();
+};
+
+$('#saveEngineSettingsBtn').onclick = async () => {
+  $('#saveEngineSettingsBtn').disabled = true;
+  try {
+    await api('/api/settings', {
+      method: 'POST',
+      body: {
+        admin_password: $('#adminPassInput').value.trim() || 'admin123',
+        mongo_uri: $('#mongoUriInput').value.trim(),
+        solver_url: $('#solverUrlInput').value.trim(),
+        cache_hours: parseFloat($('#cacheHoursInput').value) || 24,
+        accel_factor: parseFloat($('#accelInput').value) || 0.1,
+        timeout: parseInt($('#timeoutInput').value, 10) || 300,
+        cache_enabled: $('#cacheEnabledChk').checked,
+      }
+    });
+    showToast('Engine & security settings saved!');
+    await loadDashboard();
+  } finally {
+    $('#saveEngineSettingsBtn').disabled = false;
+  }
+};
+
+// Error Logs Viewer
+async function loadLogs() {
+  const logs = await api('/api/logs');
+  $('#cntLogs').textContent = logs.length;
+  const box = $('#logsContainer');
+  if (!logs.length) {
+    box.innerHTML = `<div style="color:var(--mute);text-align:center;padding:24px">✅ No error logs recorded.</div>`;
+    return;
+  }
+  box.innerHTML = logs.map(item => `
+    <div class="job" style="margin-top:10px">
+      <div class="job-h">
+        <span class="st err">✖ ERROR</span>
+        <span class="src mono">${esc(item.source)}</span>
+        <span style="color:var(--mute);font-size:12px">${esc(item.origin || 'web')}${item.user_id ? ` · UID ${item.user_id}` : ''} · ${new Date((item.at || 0) * 1000).toLocaleString()}</span>
+        <button class="danger sm del-log" data-id="${esc(item.id)}">🗑</button>
+      </div>
+      <div class="res err" style="font-size:13px"><b>Reason:</b> ${esc(item.error)}</div>
+      <pre class="log">${esc((item.log || []).join('\n') || 'No step trace recorded.')}</pre>
+    </div>
+  `).join('');
+
+  box.querySelectorAll('.del-log').forEach(b => {
+    b.onclick = async () => {
+      await api('/api/logs?id=' + encodeURIComponent(b.dataset.id), { method: 'DELETE' });
+      loadLogs();
+      loadDashboard();
+    };
+  });
+}
+
+$('#refreshLogsBtn').onclick = loadLogs;
+$('#clearAllLogsBtn').onclick = async () => {
+  await api('/api/logs?all=1', { method: 'DELETE' });
+  showToast('Cleared all error logs');
+  loadLogs();
+  loadDashboard();
+};
+
+// Users & Broadcast
+async function loadUsers() {
+  const q = $('#userSearchInput').value.trim();
+  const users = await api('/api/users?q=' + encodeURIComponent(q));
+  $('#cntUsers').textContent = users.length;
+  const tb = $('#usersTableBody');
+  if (!users.length) {
+    tb.innerHTML = `<tr><td colspan="6" style="color:var(--mute);text-align:center;padding:24px">No Telegram users found.</td></tr>`;
+    return;
+  }
+  tb.innerHTML = users.map(u => `
+    <tr>
+      <td class="mono"><b>${u.user_id}</b></td>
+      <td>${esc(u.first_name || '')} ${u.username ? `<span class="mono" style="color:var(--mute)">(@${esc(u.username)})</span>` : ''}</td>
+      <td class="mono">${u.bypass_count || 0}</td>
+      <td style="color:var(--mute)">${new Date((u.last_active || 0) * 1000).toLocaleString()}</td>
+      <td>${u.banned ? '<span class="pill err">BANNED</span>' : '<span class="pill ok">ACTIVE</span>'}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="${u.banned ? 'ok-btn' : 'danger'} sm toggle-ban" data-uid="${u.user_id}" data-ban="${u.banned ? '0' : '1'}">${u.banned ? '✅ Unban' : '🚫 Ban'}</button>
+        <button class="ghost sm del-user" data-uid="${u.user_id}">🗑</button>
+      </td>
+    </tr>
+  `).join('');
+
+  tb.querySelectorAll('.toggle-ban').forEach(b => {
+    b.onclick = async () => {
+      await api('/api/users/ban', { method: 'POST', body: { user_id: b.dataset.uid, banned: b.dataset.ban === '1' } });
+      showToast('Updated user status');
+      loadUsers();
+    };
+  });
+  tb.querySelectorAll('.del-user').forEach(b => {
+    b.onclick = async () => {
+      await api('/api/users?user_id=' + encodeURIComponent(b.dataset.uid), { method: 'DELETE' });
+      loadUsers();
+      loadDashboard();
+    };
+  });
+}
+
+$('#refreshUsersBtn').onclick = loadUsers;
+$('#userSearchInput').oninput = loadUsers;
+
+$('#sendBroadcastBtn').onclick = async () => {
+  const message = $('#broadcastTextInput').value.trim();
+  if (!message) { showToast('Enter broadcast message first', true); return; }
+  $('#sendBroadcastBtn').disabled = true;
+  $('#broadcastResult').textContent = 'Sending broadcast…';
+  try {
+    const r = await api('/api/broadcast', { method: 'POST', body: { message } });
+    if (r.error) {
+      $('#broadcastResult').textContent = 'Error: ' + r.error;
+      showToast(r.error, true);
+      return;
+    }
+    $('#broadcastResult').textContent = `✔ Delivered to ${r.delivered} / ${r.total} users (${r.failed} failed)`;
+    $('#broadcastTextInput').value = '';
+    showToast('Broadcast complete!');
+  } finally {
+    $('#sendBroadcastBtn').disabled = false;
+  }
+};
+
+async function refreshAll() {
+  await Promise.all([loadDashboard(), loadSettings(), loadCache()]);
+  testExitIp();
+}
+
+// Initial Auth Check
+(async () => {
+  try {
+    const me = await fetch('/api/auth/me').then(r => r.json());
+    if (me.authenticated) {
+      showApp();
+    } else {
+      showLogin();
+    }
+  } catch (e) {
+    showLogin();
+  }
+})();
 </script>
 </body>
 </html>

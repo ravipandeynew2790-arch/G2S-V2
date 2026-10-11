@@ -1,96 +1,50 @@
-# G2S → Railway Deploy Guide
+# TheDrunkBots G2S — Deploy & Configuration Guide
 
-Yeh project **Railway.com** pe deploy ke liye ready hai.
-
-> ⚠️ **Zaroori baat:** get2short datacenter IPs (Railway, AWS, etc.) ko block karta hai (`ip_risk_blocked`).  
-> Isliye **residential / home proxy** lagana mandatory hai, warna links generate nahi honge.
-
----
-
-## 1. Railway pe deploy (recommended – Docker)
-
-### Step A – Repo banao
-1. Is folder ko GitHub pe push karo (ya Railway pe directly upload).
-2. [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub** (ya "Empty Project" + this folder).
-
-### Step B – Variables set karo (Settings → Variables)
-
-| Variable | Example / Value | Required? |
-|----------|-----------------|-----------|
-| `G2S_PROXY` | `http://user:pass@host:port` | **Haan** (residential) |
-| `G2S_SOLVER_URL` | `http://hayabusa.proxy.rlwy.net:46794` | Haan (apna solver) |
-| `G2S_SOLVER_API_KEY` | (agar solver pe key lagi ho) | Optional |
-| `G2S_HEADLESS` | `0` | Recommended (uses built-in Xvfb virtual display) |
-| `G2S_BROWSER_CHANNEL` | (khali chhodo) | Recommended |
-| `G2S_NO_OPEN` | `1` | Auto on Railway |
-| `PORT` | Railway khud set karta hai | Auto |
-
-**Proxy sources (examples):**
-- Apna home PC se Pinggy tunnel (`tools/home_proxy.py` se)
-- Paid residential proxy (Bright Data, IPRoyal, PacketStream, etc.)
-
-### Step C – Deploy
-Railway `Dockerfile` detect karega → build → deploy.  
-Healthcheck: `GET /api/health`
-
-Deploy hone ke baad public URL milegi, jaise:
-`https://g2s-xxxx.up.railway.app`
+Complete shortlink bypasser engine with:
+- **Telegram Bot (`TheDrunkBots`)** featuring live 14-segment progress bar & ETA, `COPY LINK 📋` + `OPEN LINK ↗️` buttons, `/start` photo welcome message, Force-Subscribe channels, and an in-bot Admin Panel (`/admin`).
+- **Password-Protected Modern Dark Web Admin Panel** (live browser screenshot disabled; full CRUD on Tunnel/Proxy, Cloud Cache, Force-Sub Channels, Error Logs, Bot Users, Broadcast, and Credentials).
+- **MongoDB Atlas Real-Time Cloud Sync & Cache** (`g2sv2` database) so repeated links return in `0.01s` and all changes sync instantly between the Web Admin UI and Telegram Bot.
+- **Automatic Telegram Alerts to Owner** whenever a bypass errors (with complete step log) or the Pinggy tunnel expires.
 
 ---
 
-## 2. Local Docker test (optional)
+## 1. Configuration (`config.json` or Environment Variables)
 
-```bash
-docker build -t g2s .
-docker run --rm -p 8080:8080 \
-  -e G2S_PROXY="http://user:pass@host:port" \
-  -e G2S_SOLVER_URL="http://your-solver:port" \
-  g2s
-```
+You can set these directly in `config.json` (or via Railway/Docker environment variables, or live from the Web Admin Panel):
 
-Browser: http://localhost:8080
-
----
-
-## 3. API usage (deploy ke baad)
-
-```bash
-# Single resolve
-curl "https://YOUR-RAILWAY-URL/api/resolve?url=https://get2short.com/4mEa"
-
-# Health
-curl "https://YOUR-RAILWAY-URL/api/health"
-
-# Proxy test (IP check)
-curl "https://YOUR-RAILWAY-URL/api/proxy-test"
-```
-
-UI bhi same URL pe open hogi.
+| `config.json` Key | Env Variable Override | Description |
+|---|---|---|
+| `admin_password` | `G2S_ADMIN_PASSWORD` | Password to unlock the Web Admin Panel (default: `admin123`) |
+| `telegram_bot_token` | `G2S_BOT_TOKEN` / `BOT_TOKEN` | Telegram Bot Token from `@BotFather` |
+| `telegram_api_id` | `G2S_API_ID` / `API_ID` | Telegram API ID from `my.telegram.org` |
+| `telegram_api_hash` | `G2S_API_HASH` / `API_HASH` | Telegram API Hash from `my.telegram.org` |
+| `owner_id` | `G2S_OWNER_ID` / `OWNER_ID` | Numeric Telegram User ID of the Owner (gets tunnel & error alerts) |
+| `admin_ids` | `G2S_ADMIN_IDS` / `ADMIN_IDS` | List (or comma-separated string) of Admin Telegram User IDs |
+| `mongo_uri` | `G2S_MONGO_URI` / `MONGO_URI` | MongoDB Atlas connection string |
+| `proxy` | `G2S_PROXY` | Pinggy / residential HTTP proxy (`http://user:pass@host:port`) |
+| `solver_url` | `G2S_SOLVER_URL` | Turnstile solver URL (`https://cf.vltcx.eu.cc`) |
+| `start_photo` | `G2S_START_PHOTO` | `/start` welcome photo (`https://i.ibb.co/1Nx1jMn/IMG-20261005-021725.png`) |
 
 ---
 
-## 4. Important notes
+## 2. Telegram Bot Commands
 
-1. **Proxy must be residential** – `api/proxy-test` response mein `"datacenter": false` hona chahiye.
-2. Headless mode Cloudflare ko kabhi-kabhi fail karta hai. Agar fail ho to:
-   - Better residential proxy try karo
-   - Ya `G2S_HEADLESS=0` (lekin Railway pe Xvfb chahiye – Dockerfile me abhi nahi hai)
-3. Solver alag service pe hona chahiye (jaise pehle se Railway pe `hayabusa` wala).
-4. Free Pinggy tunnels 60 min baad change ho jate hain – naya URL `G2S_PROXY` me update karna padega.
+### User Commands
+- `/start` — Welcome message with photo & **TheDrunkBots** branding
+- `/help` — Guide & supported shorteners list
+- `/bypass <link>` (or send any link directly in chat) — Bypass link with live progress bar & ETA
+- `/status` / `/ping` — Check bot & cloud cache status
+- `/myinfo` — View user profile & total bypassed links
 
----
-
-## File structure (deploy ke liye zaroori)
-
-```
-├── Dockerfile          ← Railway isse build karega
-├── railway.toml
-├── server.py           ← PORT + env aware
-├── config.json
-├── requirements.txt
-├── g2s/                ← engine, scripts, solver
-├── web/index.html
-└── README_RAILWAY.md
-```
-
-`run.bat`, `setup.bat`, `tests/`, `tools/` optional hain – Railway pe zarurat nahi.
+### Owner / Admin Commands (Only accessible by `owner_id` / `admin_ids`)
+- `/admin` or `/panel` — Open interactive **In-Bot Admin Control Panel**
+- `/setproxy <http://user:pass@host:port | off>` — Update tunnel proxy live
+- `/testproxy` — Test current exit IP & residential check
+- `/fsub` — Open Force-Subscribe channel manager
+- `/addfsub <@channel or -100id> [invite_link] [title]` — Add Force-Subscribe channel
+- `/delfsub <@channel or -100id>` — Remove Force-Subscribe channel
+- `/clearcache` / `/delcache <url>` — Clear or delete cached links
+- `/logs` / `/clearlogs` — View or clear recent error logs
+- `/broadcast <message>` (or reply to a message with `/broadcast`) — Broadcast to all users
+- `/ban <user_id>` / `/unban <user_id>` — Ban or unban a user
+- `/addadmin <user_id>` / `/deladmin <user_id>` — Add or remove admin IDs

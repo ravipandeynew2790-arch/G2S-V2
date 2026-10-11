@@ -1,4 +1,18 @@
 {
+  "brand_name": "TheDrunkBots",
+  "admin_password": "admin123",
+  "mongo_uri": "mongodb+srv://shauryasharma9940_db_user:hi1OxTU3GdXFtRLf@g2sv2.fnvvosz.mongodb.net/?appName=G2SV2",
+  "telegram_bot_token": "",
+  "telegram_api_id": 0,
+  "telegram_api_hash": "",
+  "owner_id": 0,
+  "admin_ids": [],
+  "start_photo": "https://i.ibb.co/1Nx1jMn/IMG-20261005-021725.png",
+  "updates_channel": "https://t.me/TheDrunkBots",
+  "force_sub_enabled": true,
+  "force_sub_channels": [],
+  "maintenance_mode": false,
+  "protect_content": false,
   "solver_url": "https://cf.vltcx.eu.cc",
   "solver_api_key": null,
   "browser_channel": null,
@@ -32,6 +46,9 @@
   "debug_dir": "debug",
   "host": "0.0.0.0",
   "port": 8080,
-  "cache_hours": 24,
-  "proxy": "http://g2s:153f9e0322@okjgq-117-235-174-54.run.pinggy-free.link:38241"
+  "cache_enabled": true,
+  "cache_hours": 24.0,
+  "proxy": "http://g2s:153f9e0322@okjgq-117-235-174-54.run.pinggy-free.link:38241",
+  "welcome_message": "👋 <b>Hey {first_name}!</b>\n<blockquote>⚡ <b>Send me any supported shortlink and I will bypass ads, timers & captchas automatically to give you the direct destination link!</b></blockquote>\n\n✨ <b>𝗙𝗘𝗔𝗧𝗨𝗥𝗘𝗦 :</b>\n<blockquote>• 🚀 <b>Instant Cloud Cache</b> (0.01s for repeated links)\n• 📊 <b>Live Progress Bar & ETA</b> while bypassing\n• 🛡 <b>Auto Turnstile & Multi-Step Solver</b>\n• 🔗 <b>15+ Shorteners Supported</b></blockquote>\n━━━━━━━━━━━━━━━━━━━━━━\n🏷 <b>𝗣𝗢𝗪𝗘𝗥𝗘𝗗 𝗕𝗬 :</b> <code>{brand}</code>",
+  "proxy_expired": false
 }
