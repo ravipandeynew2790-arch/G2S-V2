@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Get2Short → Direct Link</title>
+<style>
+  :root{--bg:#0e1116;--panel:#161b22;--line:#262d37;--text:#e6edf3;--mute:#8b949e;--acc:#4f8cff;--ok:#2ea043;--err:#f85149;--warn:#d29922}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:36px 20px 60px}
+  h1{font-size:26px;margin:0 0 4px}
+  .sub{color:var(--mute);margin:0 0 24px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px}
+  textarea{width:100%;min-height:74px;resize:vertical;background:#0b0e13;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:12px;font:14px ui-monospace,Consolas,monospace}
+  textarea:focus{outline:2px solid var(--acc);border-color:transparent}
+  .row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+  button{border:0;border-radius:10px;padding:10px 18px;font-weight:600;font-size:14px;cursor:pointer;background:var(--acc);color:#fff}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+  button:disabled{opacity:.5;cursor:default}
+  label{color:var(--mute);font-size:13px;display:flex;gap:6px;align-items:center}
+  .pill{font-size:12px;padding:3px 10px;border-radius:99px;border:1px solid var(--line);color:var(--mute);margin-left:auto}
+  .pill.ok{color:var(--ok);border-color:#2ea04366}.pill.down{color:var(--err);border-color:#f8514966}
+  .job{border:1px solid var(--line);border-radius:12px;margin-top:14px;overflow:hidden}
+  .job-h{display:flex;gap:10px;align-items:center;padding:10px 14px;background:#11161d;font-size:13px}
+  .job-h .src{font-family:ui-monospace,Consolas,monospace;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .st{font-weight:700;font-size:12px}
+  .st.running,.st.queued{color:var(--warn)}.st.ok{color:var(--ok)}.st.err{color:var(--err)}
+  .log{margin:0;padding:10px 14px;max-height:220px;overflow:auto;font:12.5px/1.55 ui-monospace,Consolas,monospace;color:#a9b4c0;white-space:pre-wrap;border-top:1px solid var(--line)}
+  .res{padding:14px;border-top:1px solid var(--line);background:#0f1a12}
+  .res.err{background:#1d0f10;color:#ffb4ae}
+  .res a{color:#7ee787;word-break:break-all;font-family:ui-monospace,Consolas,monospace;font-size:14px}
+  .res .meta{color:var(--mute);font-size:12px;margin-top:6px}
+  .res .row{margin-top:10px}
+  .hist{width:100%;border-collapse:collapse;font-size:13px}
+  .hist td{padding:7px 6px;border-top:1px solid var(--line);vertical-align:top}
+  .hist td a{color:#7ee787;word-break:break-all}
+  .hist .s{color:var(--mute);font-family:ui-monospace,Consolas,monospace;white-space:nowrap}
+  .spin{display:inline-block;width:10px;height:10px;border:2px solid var(--warn);border-right-color:transparent;border-radius:50%;animation:r .8s linear infinite}
+  @keyframes r{to{transform:rotate(360deg)}}
+  .empty{color:var(--mute);font-size:13px}
+  input[type=text]{flex:1;min-width:260px;background:#0b0e13;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:13px ui-monospace,Consolas,monospace}
+  .ipline{font-size:13px;margin-top:10px;color:var(--mute)}
+  .ipline b.good{color:var(--ok)} .ipline b.bad{color:var(--err)}
+  .hint{font-size:12.5px;color:var(--mute);margin-top:10px;line-height:1.6}
+  .hint code{background:#0b0e13;border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  #live{width:100%;border-radius:10px;border:1px solid var(--line);display:none;margin-top:10px;background:#fff}
+  details summary{cursor:pointer;color:var(--mute);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Get2Short → Direct Link</h1>
+  <p class="sub">Paste get2short links (one per line). The ads, timers, blog steps and Turnstile checks are handled in a hidden Chrome window, and you get the destination URL.</p>
+
+  <div class="card">
+    <div class="row" style="margin:0 0 8px"><b>Connection</b><span class="pill" id="netpill">checking…</span></div>
+    <div class="row" style="margin-top:0">
+      <input type="text" id="proxy" placeholder="http://user:pass@host:port  (empty = direct connection)" spellcheck="false">
+      <button class="ghost" id="saveProxy">Save</button>
+      <button class="ghost" id="testProxy">Test exit IP</button>
+    </div>
+    <div class="ipline" id="ipline"></div>
+    <details class="hint"><summary>Why a proxy? / how to use your home IP</summary>
+      get2short (step 1), the intermediate blogs (sayphotobooth.com, odiadance.com, …) and Cloudflare all reject
+      datacenter IPs (<code>ip_risk_blocked</code>), and the final <code>wp=</code> token is bound to the visitor IP.
+      When this runs on a server it needs a residential/mobile exit IP.<br>
+      Easiest: on your PC run <code>tools\home_proxy.bat</code>. It prints
+      <code>http://g2s:xxxx@xxxx.pinggy-free.link:port</code>; paste that here, then press Save and Test.
+      Any residential HTTP proxy works too.
+    </details>
+  </div>
+
+  <div class="card">
+    <textarea id="urls" placeholder="https://get2short.com/4mEa" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="go">Generate direct link</button>
+      <label><input type="checkbox" id="force"> Force (ignore cache)</label>
+      <span class="pill" id="solver">solver: checking…</span>
+    </div>
+    <div id="jobs"></div>
+    <img id="live" alt="live browser view">
+  </div>
+
+  <div class="card">
+    <div class="row" style="margin:0 0 6px"><b>History</b>
+      <button class="ghost" id="clear" style="margin-left:auto;padding:5px 12px">Clear</button></div>
+    <table class="hist" id="hist"></table>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function health(){
+  try{ const h = await (await fetch('/api/health')).json();
+    const p = $('#solver'); p.textContent = 'solver: ' + h.solver; p.className = 'pill ' + h.solver;
+    p.title = h.solver_url + '\n' + JSON.stringify(h.detail);
+  }catch(e){}
+}
+
+async function history(){
+  const items = await (await fetch('/api/history')).json();
+  $('#hist').innerHTML = items.length ? items.map(i => `<tr><td class="s">${esc(i.source.replace(/^https?:\/\//,''))}</td>
+    <td><a href="${esc(i.url)}" target="_blank" rel="noreferrer">${esc(i.url)}</a></td>
+    <td class="s">${new Date(i.at*1000).toLocaleString()}</td></tr>`).join('')
+    : '<tr><td class="empty">No links resolved yet.</td></tr>';
+}
+
+function jobBox(id, src){
+  const d = document.createElement('div'); d.className = 'job'; d.id = 'j' + id;
+  d.innerHTML = `<div class="job-h"><span class="st running"><span class="spin"></span> working</span>
+    <span class="src">${esc(src)}</span></div><pre class="log"></pre>`;
+  $('#jobs').prepend(d); return d;
+}
+
+function finish(box, job){
+  const st = box.querySelector('.st');
+  const r = document.createElement('div');
+  if (job.result){
+    st.className = 'st ok'; st.textContent = job.result.cached ? '✔ cached' : `✔ ${job.result.elapsed}s`;
+    r.className = 'res';
+    r.innerHTML = `<a href="${esc(job.result.url)}" target="_blank" rel="noreferrer">${esc(job.result.url)}</a>
+      <div class="meta">via ${esc(job.result.method || '')} · ${(job.result.steps||[]).length} pages handled automatically</div>
+      <div class="row"><button class="cp">Copy</button><button class="ghost op">Open</button></div>`;
+    r.querySelector('.cp').onclick = e => { navigator.clipboard.writeText(job.result.url); e.target.textContent = 'Copied ✓'; };
+    r.querySelector('.op').onclick = () => window.open(job.result.url, '_blank', 'noreferrer');
+    box.querySelector('.log').style.maxHeight = '120px';
+  } else {
+    st.className = 'st err'; st.textContent = '✖ failed';
+    r.className = 'res err'; r.textContent = job.error || 'failed';
+  }
+  box.appendChild(r);
+  history();
+}
+
+$('#go').onclick = async () => {
+  const url = $('#urls').value.trim(); if (!url) return;
+  $('#go').disabled = true;
+  try{
+    const res = await (await fetch('/api/jobs', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({url, force: $('#force').checked})})).json();
+    const lines = url.split(/\n/).map(s=>s.trim()).filter(Boolean);
+    (res.jobs||[]).forEach((id, i) => {
+      const box = jobBox(id, lines[i]); const log = box.querySelector('.log');
+      const es = new EventSource(`/api/jobs/${id}/events`);
+      es.onmessage = ev => { const m = JSON.parse(ev.data);
+        if (m.log){ log.textContent += m.log + '\n'; log.scrollTop = log.scrollHeight; }
+        if (m.done){ es.close(); finish(box, m.done); } };
+    });
+    $('#urls').value = '';
+  } finally { $('#go').disabled = false; }
+};
+$('#urls').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('#go').click(); });
+$('#clear').onclick = async () => { await fetch('/api/history', {method:'DELETE'}); history(); };
+// ---- connection / proxy
+async function settings(){
+  const st = await (await fetch('/api/settings')).json();
+  $('#proxy').placeholder = st.proxy ? ('current: ' + st.proxy + '   (type a new one or clear + Save)') : 'http://user:pass@host:port  (empty = direct connection)';
+  $('#netpill').textContent = st.has_proxy ? 'via proxy' : 'direct';
+  return st;
+}
+async function testIp(){
+  $('#ipline').textContent = 'Testing exit IP…';
+  const r = await (await fetch('/api/proxy-test')).json();
+  if (!r.ok){ $('#ipline').innerHTML = '<b class="bad">Proxy error:</b> ' + esc(r.error); $('#netpill').className='pill down'; return; }
+  const cls = r.datacenter ? 'bad' : 'good';
+  $('#ipline').innerHTML = `Exit IP <b class="${cls}">${esc(r.ip)}</b> · ${esc([r.city,r.region,r.country].filter(Boolean).join(', '))} · ${esc(r.org||'')}` +
+    (r.datacenter ? ' — <b class="bad">datacenter IP, get2short will block it</b>' : ' — <b class="good">looks residential ✓</b>');
+  $('#netpill').className = 'pill ' + (r.datacenter ? 'down' : 'ok');
+}
+$('#saveProxy').onclick = async () => {
+  $('#saveProxy').disabled = true; $('#ipline').textContent = 'Restarting browser with new proxy…';
+  try{
+    const r = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({proxy: $('#proxy').value.trim()})});
+    const d = await r.json(); if (d.error){ $('#ipline').textContent = d.error; return; }
+    $('#proxy').value = ''; await settings(); await testIp();
+  } finally { $('#saveProxy').disabled = false; }
+};
+$('#testProxy').onclick = testIp;
+
+// ---- live browser view while jobs run
+let liveTimer = null;
+function liveTick(){
+  const running = document.querySelectorAll('.st.running').length > 0;
+  const img = $('#live');
+  if (!running){ img.style.display = 'none'; return; }
+  const n = new Image();
+  n.onload = () => { img.src = n.src; img.style.display = 'block'; };
+  n.src = '/api/screenshot?t=' + Date.now();
+}
+setInterval(liveTick, 1500);
+
+health(); history(); settings().then(testIp); setInterval(health, 30000);
+</script>
+</body>
+</html>

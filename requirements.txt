@@ -1,0 +1,3 @@
+patchright>=1.50
+aiohttp>=3.9
+playwright>=1.40
