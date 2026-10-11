@@ -33,13 +33,19 @@ def estimate_duration(url: str) -> float:
     h = (urlparse(url).hostname or "").lower()
     if "arolinks." in h:
         return 115.0
-    if "linksfire." in h:
-        return 12.0
-    if "urllinkshort." in h or "shortwala." in h:
+    if "vplink." in h or "inshorturl." in h:
+        return 90.0
+    if "get2short." in h or "liteshort." in h or "nowshort." in h or "linksflys." in h:
+        return 48.0
+    if "softurl." in h or "jobsraavi." in h:
+        return 30.0
+    if "babylinks." in h:
         return 18.0
-    if "softurl." in h or "babylinks." in h:
-        return 32.0
-    return 24.0
+    if "linksfire." in h:
+        return 10.0
+    if "urllinkshort." in h or "shortwala." in h or "earnlinks." in h or "lksfy." in h:
+        return 20.0
+    return 26.0
 
 
 def build_progress_bar(pct: int, width: int = 14) -> str:
@@ -97,6 +103,9 @@ class TelegramBot:
         # Tracks interactive admin input state: {user_id: {"action": "...", ...}}
         self._admin_states: dict[int, dict[str, Any]] = {}
         self._last_tunnel_alert_at: float = 0.0
+        self._alerted_expired_proxy: str | None = None
+        # Tracks active/queued bypass jobs for accurate queue-aware ETA: {job_uid: [start_mono, est_sec]}
+        self._active_jobs: dict[str, list[float]] = {}
 
     @property
     def api_base(self) -> str:
@@ -316,14 +325,25 @@ class TelegramBot:
         await self.notify_admins(msg, reply_markup=kb)
 
     async def notify_tunnel_expired(self, expired_proxy: str | None, reason: str):
-        now = time.time()
-        if now - self._last_tunnel_alert_at < 60:
+        px_key = (expired_proxy or "").strip()
+        if not px_key:
             return
-        self._last_tunnel_alert_at = now
-        await self.db.update_settings({"proxy_expired": True}, notify=False)
+        already_notified_for = (self.db.settings.get("proxy_expired_notified_for") or "").strip()
+        if (
+            self._alerted_expired_proxy == px_key
+            or already_notified_for == px_key
+            or bool(self.db.settings.get("proxy_expired"))
+        ):
+            return
+        self._alerted_expired_proxy = px_key
+        self._last_tunnel_alert_at = time.time()
+        await self.db.update_settings(
+            {"proxy_expired": True, "proxy_expired_notified_for": px_key},
+            notify=False,
+        )
         if not self.running:
             return
-        masked = re.sub(r"(://[^:/@]+:)[^@]+@", r"\1•••@", expired_proxy or "") if expired_proxy else "None"
+        masked = re.sub(r"(://[^:/@]+:)[^@]+@", r"\1•••@", px_key)
         msg = (
             f"⚠️ • <b>𝗧𝗨𝗡𝗡𝗘𝗟 / 𝗣𝗥𝗢𝗫𝗬 𝗘𝗫𝗣𝗜𝗥𝗘𝗗</b>\n\n"
             f"🌐 <b>𝗘𝗫𝗣𝗜𝗥𝗘𝗗 𝗧𝗨𝗡𝗡𝗘𝗟 :</b>\n<blockquote><code>{esc(masked)}</code></blockquote>\n"
@@ -640,38 +660,100 @@ class TelegramBot:
             return
 
         # 2. Send initial live progress message (matches image-2.png!)
-        est_total = estimate_duration(url)
-        init_text = format_fetching_message(6, 0.4, est_total)
+        now_m = time.monotonic()
+        base_est = estimate_duration(url)
+        queue_wait = 0.0
+        for j_uid, (j_t0, j_est) in list(self._active_jobs.items()):
+            # If the same URL is already in-flight, share its remaining time rather than adding to queue
+            if j_uid.startswith(url + "|"):
+                rem_same = max(4.0, j_est - (now_m - j_t0))
+                base_est = rem_same
+                queue_wait = 0.0
+                break
+            queue_wait += max(5.0, j_est - (now_m - j_t0))
+        est_total = base_est + queue_wait
+        job_track_id = f"{url}|{chat_id}:{reply_to}:{now_m}"
+        self._active_jobs[job_track_id] = [now_m, base_est]
+
+        init_text = format_fetching_message(5, 0.4, est_total)
         sent = await self.send_message(chat_id, init_text, reply_to=reply_to)
         prog_msg_id = ((sent or {}).get("result") or {}).get("message_id")
 
         t0 = time.monotonic()
-        step_state = {"pct_floor": 6, "done": False}
+        step_state: dict[str, Any] = {
+            "pct_floor": 5,
+            "done": False,
+            "started_at": None,
+            "reached_final": False,
+            "rem_at": None,  # (monotonic_ts, seconds_remaining)
+        }
         log_lines: list[str] = []
 
         def on_log(line: str):
-            elapsed_now = time.monotonic() - t0
+            now_l = time.monotonic()
+            elapsed_now = now_l - t0
             log_lines.append(f"[{elapsed_now:5.1f}s] {line}")
             low = line.lower()
+            if step_state["started_at"] is None and ("opening " in low or "→ " in low):
+                step_state["started_at"] = now_l
+                self._active_jobs[job_track_id] = [now_l, base_est]
+                step_state["pct_floor"] = max(step_state["pct_floor"], 12)
+
+            m_wait = re.search(
+                r"waiting\s+(\d+)s\b|server\s+timer\s+(\d+)s\s+left",
+                low,
+            )
+            if m_wait:
+                sec = float(m_wait.group(1) or m_wait.group(2) or 0)
+                if sec > 0:
+                    extra = 9.0 if "arolinks" in low else 12.0
+                    step_state["rem_at"] = (now_l, sec + extra)
+                    self._active_jobs[job_track_id] = [now_l, sec + extra]
+
             if "reached the shortener's final page" in low:
-                step_state["pct_floor"] = max(step_state["pct_floor"], 84)
-            elif "turnstile solved" in low or "final link found" in low or "jumping to safelink" in low:
-                step_state["pct_floor"] = max(step_state["pct_floor"], 68)
+                step_state["reached_final"] = True
+                step_state["pct_floor"] = max(step_state["pct_floor"], 86)
+                step_state["rem_at"] = (now_l, 6.0)
+                self._active_jobs[job_track_id] = [now_l, 6.0]
+            elif "following final redirect" in low or "links/go api" in low:
+                step_state["reached_final"] = True
+                step_state["pct_floor"] = max(step_state["pct_floor"], 95)
+                step_state["rem_at"] = (now_l, 2.0)
+            elif "final link obtained" in low or "final link found" in low or "jumping to safelink" in low:
+                step_state["pct_floor"] = max(step_state["pct_floor"], 72)
+                step_state["rem_at"] = (now_l, 11.0)
+            elif "turnstile solved" in low:
+                step_state["pct_floor"] = max(step_state["pct_floor"], 64)
             elif "submitting safelink form" in low or "click" in low or "shortcut" in low:
-                step_state["pct_floor"] = min(78, step_state["pct_floor"] + 12)
+                step_state["pct_floor"] = min(78, step_state["pct_floor"] + 10)
 
         async def updater():
-            last_pct = 6
+            last_pct = 5
             while not step_state["done"] and prog_msg_id:
                 await asyncio.sleep(2.4)
                 if step_state["done"]:
                     break
-                el = time.monotonic() - t0
-                time_pct = int(min(92, (el / max(8.0, est_total)) * 88))
-                pct = max(last_pct + 2, time_pct, step_state["pct_floor"])
-                pct = min(95, pct)
+                now_u = time.monotonic()
+                el = now_u - t0
+                started_at = step_state["started_at"]
+                if started_at is None:
+                    # Still waiting in browser queue
+                    pct = min(12, last_pct + 1)
+                    rem = max(base_est, est_total - el)
+                else:
+                    active_el = now_u - started_at
+                    if step_state["rem_at"] is not None:
+                        r_t0, r_sec = step_state["rem_at"]
+                        rem = max(3.0 if step_state["reached_final"] else 8.0, r_sec - (now_u - r_t0))
+                        total_proj = active_el + rem
+                        time_pct = int(min(92, (active_el / max(8.0, total_proj)) * 90))
+                    else:
+                        rem = max(3.0 if step_state["reached_final"] else 9.0, base_est - active_el)
+                        time_pct = int(min(88, (active_el / max(8.0, base_est)) * 84))
+                    cap = 96 if step_state["reached_final"] else 84
+                    pct = max(last_pct + 1, time_pct, step_state["pct_floor"])
+                    pct = min(cap, pct)
                 last_pct = pct
-                rem = max(2.0, est_total - el)
                 try:
                     await self.edit_message(chat_id, prog_msg_id, format_fetching_message(pct, el, rem))
                 except Exception:
@@ -689,6 +771,7 @@ class TelegramBot:
             )
             step_state["done"] = True
             upd_task.cancel()
+            self._active_jobs.pop(job_track_id, None)
 
             dest_url = res["url"]
             elapsed = float(res.get("elapsed") or round(time.monotonic() - t0, 2))
@@ -709,6 +792,7 @@ class TelegramBot:
         except Exception:
             step_state["done"] = True
             upd_task.cancel()
+            self._active_jobs.pop(job_track_id, None)
             err_text = format_user_error_message(raw_url)
             if prog_msg_id:
                 await self.edit_message(chat_id, prog_msg_id, err_text)

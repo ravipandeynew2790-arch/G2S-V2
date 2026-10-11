@@ -39,7 +39,7 @@ def _apply_db_settings_to_cfg():
     s = db.settings
     cfg.solver_url = (s.get("solver_url") or "https://cf.vltcx.eu.cc").rstrip("/")
     cfg.solver_api_key = s.get("solver_api_key")
-    cfg.proxy = s.get("proxy")
+    cfg.proxy = None if s.get("proxy_expired") else s.get("proxy")
     cfg.accel_factor = float(s.get("accel_factor", 0.1))
     cfg.timeout = int(s.get("timeout", 300))
     cfg.stuck_seconds = int(s.get("stuck_seconds", 100))
@@ -90,14 +90,17 @@ def is_req_authenticated(req: web.Request) -> bool:
 
 
 async def test_proxy_status(px_override: str | None = "__current__") -> dict:
-    px = cfg.proxy if px_override == "__current__" else px_override
+    px = (db.settings.get("proxy") or cfg.proxy) if px_override == "__current__" else px_override
     try:
         kw = {}
         if px:
             d = parse_proxy(px)
             kw["proxy"] = d["server"]
             if d.get("username"):
-                kw["proxy_auth"] = aiohttp.BasicAuth(d["username"], d.get("password", ""))
+                raw_auth = f"{d['username']}:{d.get('password', '')}".encode("utf-8")
+                kw["proxy_headers"] = {
+                    "Proxy-Authorization": "Basic " + base64.b64encode(raw_auth).decode("ascii")
+                }
         async with aiohttp.ClientSession() as s:
             async with s.get("https://ipinfo.io/json", timeout=aiohttp.ClientTimeout(total=18), **kw) as r:
                 info = await r.json(content_type=None)
@@ -109,7 +112,8 @@ async def test_proxy_status(px_override: str | None = "__current__") -> dict:
             )
         )
         if px and db.settings.get("proxy_expired"):
-            await db.update_settings({"proxy_expired": False}, notify=False)
+            bot._alerted_expired_proxy = None
+            await db.update_settings({"proxy_expired": False, "proxy_expired_notified_for": ""}, notify=False)
         return {
             "ok": True,
             "via_proxy": bool(px),
@@ -126,9 +130,16 @@ async def test_proxy_status(px_override: str | None = "__current__") -> dict:
 
 async def set_system_proxy(new_proxy: str | None):
     clean = (new_proxy or "").strip() or None
-    await db.update_settings({"proxy": clean, "proxy_expired": False}, notify=False)
+    bot._alerted_expired_proxy = None
+    await db.update_settings(
+        {"proxy": clean, "proxy_expired": False, "proxy_expired_notified_for": ""},
+        notify=False,
+    )
     cfg.proxy = clean
     await bypasser.set_proxy(clean)
+
+
+_inflight: dict[str, dict] = {}
 
 
 async def resolve_link_core(
@@ -146,25 +157,49 @@ async def resolve_link_core(
             extra_log_cb("Served from cloud cache")
         return hit
 
+    # Deduplicate simultaneous requests for the exact same URL
+    if not force and key in _inflight:
+        existing = _inflight[key]
+        if extra_log_cb:
+            for prev_msg in existing["raw_logs"]:
+                try:
+                    extra_log_cb(prev_msg)
+                except Exception:
+                    pass
+            existing["cbs"].append(extra_log_cb)
+        return await asyncio.shield(existing["fut"])
+
+    loop = asyncio.get_running_loop()
+    fut = loop.create_future()
+    cbs = [extra_log_cb] if extra_log_cb else []
+    raw_logs: list[str] = []
+    if not force:
+        _inflight[key] = {"fut": fut, "cbs": cbs, "raw_logs": raw_logs}
+
     log_lines: list[str] = []
     t0 = time.time()
 
     def log_fn(msg: str):
+        raw_logs.append(msg)
         line = f"[{time.time() - t0:5.1f}s] {msg}"
         log_lines.append(line)
         print(line, flush=True)
-        if extra_log_cb:
-            try:
-                extra_log_cb(msg)
-            except Exception:
-                pass
+        for cb in list(cbs):
+            if cb:
+                try:
+                    cb(msg)
+                except Exception:
+                    pass
 
     try:
         res = await bypasser.resolve(key, log=log_fn)
         res["at"] = time.time()
         await db.set_cache(key, res)
         await db.increment_stat("total_bypasses", 1)
-        return {**res, "cached": False}
+        out = {**res, "cached": False}
+        if not fut.done():
+            fut.set_result(out)
+        return out
     except Exception as e:
         err_str = str(e) if isinstance(e, BypassError) else f"{type(e).__name__}: {e}"
         log_fn(f"✖ {err_str}")
@@ -177,7 +212,12 @@ async def resolve_link_core(
             username=username,
         )
         asyncio.create_task(bot.notify_error_log(entry))
+        if not fut.done():
+            fut.set_exception(e)
         raise
+    finally:
+        if _inflight.get(key, {}).get("fut") is fut:
+            _inflight.pop(key, None)
 
 
 bot = TelegramBot(
@@ -589,10 +629,11 @@ async def _background_sync_and_tunnel_monitor():
             await db.refresh_settings_from_mongo()
             _apply_db_settings_to_cfg()
             await bot.reload_if_needed()
-            if cfg.proxy and not bypasser.busy:
-                info = await test_proxy_status(cfg.proxy)
+            active_px = (db.settings.get("proxy") or "").strip()
+            if active_px and not db.settings.get("proxy_expired") and not bypasser.busy:
+                info = await test_proxy_status(active_px)
                 if not info.get("ok"):
-                    await bot.notify_tunnel_expired(cfg.proxy, info.get("error") or "Tunnel unreachable")
+                    await bot.notify_tunnel_expired(active_px, info.get("error") or "Tunnel unreachable")
         except asyncio.CancelledError:
             break
         except Exception:

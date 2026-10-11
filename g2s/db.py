@@ -173,6 +173,7 @@ class Database:
                 else raw.get("proxy")
             ),
             "proxy_expired": bool(raw.get("proxy_expired", False)),
+            "proxy_expired_notified_for": str(raw.get("proxy_expired_notified_for") or ""),
             "solver_url": (
                 os.environ.get("G2S_SOLVER_URL")
                 or raw.get("solver_url")
@@ -231,6 +232,7 @@ class Database:
                 "owner_id", "admin_ids", "start_photo", "welcome_message",
                 "updates_channel", "force_sub_enabled", "force_sub_channels",
                 "maintenance_mode", "protect_content", "proxy", "proxy_expired",
+                "proxy_expired_notified_for",
                 "solver_url", "solver_api_key", "accel_factor", "timeout",
                 "stuck_seconds", "cache_enabled", "cache_hours", "no_accel_hosts",
             )

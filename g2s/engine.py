@@ -184,6 +184,9 @@ class Job:
         self.pending_redirect = None
         self.pending_redirect_used = set()
         self.tried_tokens = set()
+        self.arolinks_ref_t0 = None
+        self.arolinks_blog_hosts = set()
+        self.final_since = None
 
     def check_shortcut(self, u: str):
         if not u or not u.startswith("http"):
@@ -435,7 +438,14 @@ class Bypasser:
                     await self._restart(self._accel)
                     t0 = time.monotonic()
                     return await self._attempt(url, log, t0)
-                if self._accel >= 1 or "blocked" in str(e).lower() or "server redirect loop" in str(e).lower():
+                err_low = str(e).lower()
+                if (
+                    self._accel >= 1
+                    or "blocked" in err_low
+                    or "server redirect loop" in err_low
+                    or "404" in err_low
+                    or "not found" in err_low
+                ):
                     raise
                 log(f"⚠ {e} — retrying once with real-time timers (no acceleration)…")
                 normal = self._accel
@@ -464,7 +474,9 @@ class Bypasser:
         self.busy = True
         if job.base == "arolinks.com":
             try:
-                await self.ctx.clear_cookies(domain=re.compile(r"(^|\.)(arolinks\.com|techmint\.in|bcsakhi\.in)$"))
+                await self.ctx.clear_cookies(
+                    domain=re.compile(r"(^|\.)(arolinks\.com|techmint\.in|rupeeriser\.in|bcsakhi\.in)$")
+                )
             except Exception:
                 pass
         await self._attach(job, page)
@@ -591,6 +603,15 @@ class Bypasser:
             try:
                 u = resp.url
                 job.check_shortcut(u)
+                if (
+                    resp.status in (404, 410)
+                    and resp.request.is_navigation_request()
+                    and resp.frame == page.main_frame
+                    and not job.reached_final
+                    and (u.rstrip("/") == job.start_url.rstrip("/") or host_of(u) == job.base)
+                ):
+                    job.fatal = f"Shortener link not found (HTTP {resp.status} on {host_of(u)})"
+                    return
                 if resp.status in (301, 302, 303, 307, 308):
                     loc = resp.headers.get("location")
                     if loc:
@@ -710,7 +731,7 @@ class Bypasser:
                 raise BypassError(f"Cloudflare keeps re-challenging on {host} — this IP is blocked "
                                   "by Cloudflare. Use a home/mobile IP or residential proxy.")
             job.log(f"Cloudflare check on {host}… waiting (passes automatically on a home IP)")
-            if now - job.challenge_since > 25 and now - job.challenge_click_at > 12:
+            if now - job.challenge_since > 4.0 and now - job.challenge_click_at > 6.0:
                 job.challenge_click_at = now
                 if await self._click_cf_checkbox(page):
                     job.log("Clicked the Cloudflare checkbox")
@@ -723,6 +744,58 @@ class Bypasser:
         host = host_of(url)
         if job.fatal:
             raise BypassError(job.fatal)
+
+        # --- babylinks.in: work.jobsheel.com frontend is restricted; unwrap via jobsheel.com ---
+        if job.base == "babylinks.in" and ("baby.php" in url or host in ("work.jobsheel.com", "jobsheel.com")):
+            if "babylinks_unwrapped" not in job.shortcut_used:
+                from urllib.parse import parse_qs
+                q = parse_qs(urlparse(url).query)
+                alias = (q.get("links") or [urlparse(job.start_url).path.strip("/")])[0]
+                if alias:
+                    job.shortcut_used.add("babylinks_unwrapped")
+                    job.log("⚡ Unwrapping babylinks step chain via jobsheel.com…")
+                    try:
+                        await self.ctx.add_cookies([
+                            {"name": "tp1", "value": alias, "domain": "jobsheel.com", "path": "/"}
+                        ])
+                        if host != "jobsheel.com":
+                            await page.goto("https://jobsheel.com/", wait_until="domcontentloaded", timeout=30000)
+                        wp_url = await self._eval(page, """async () => {
+                            const f1 = document.querySelector('form[name="tp1"]');
+                            if (!f1) return null;
+                            const fd1 = new URLSearchParams(new FormData(f1));
+                            const r1 = await fetch(f1.action, {method: 'POST', body: fd1, credentials: 'include'});
+                            const doc1 = new DOMParser().parseFromString(await r1.text(), 'text/html');
+                            const f2 = doc1.querySelector('form[name="tp"]');
+                            if (!f2) return null;
+                            const fd2 = new URLSearchParams(new FormData(f2));
+                            const r2 = await fetch(f2.action, {method: 'POST', body: fd2, credentials: 'include'});
+                            const doc2 = new DOMParser().parseFromString(await r2.text(), 'text/html');
+                            const a = doc2.querySelector('a#btn6[href*="babylinks"]');
+                            return a ? a.href : null;
+                        }""")
+                        if wp_url and str(wp_url).startswith("http"):
+                            job.log(f"⚡ Final link obtained → {short(wp_url)}")
+                            await page.goto(wp_url, wait_until="commit", timeout=30000, referer="https://jobsheel.com/")
+                            return page
+                    except Exception:
+                        pass
+
+        # --- get2short.com: bypass broken finestart.in loop via odiadance.com ---
+        if job.base == "get2short.com" and "finestart.in" in host:
+            if "odiadance_fallback" not in job.shortcut_used:
+                alias = urlparse(job.start_url).path.strip("/")
+                if alias:
+                    job.shortcut_used.add("odiadance_fallback")
+                    job.log("⚡ Switching get2short flow from finestart.in to odiadance.com safelink…")
+                    try:
+                        await self.ctx.add_cookies([
+                            {"name": "HQ", "value": alias, "domain": "odiadance.com", "path": "/"}
+                        ])
+                        await page.goto("https://odiadance.com/", wait_until="commit", timeout=30000)
+                        return page
+                    except Exception:
+                        pass
 
         if job.pending_redirect and job.pending_redirect not in job.pending_redirect_used:
             target = job.pending_redirect
@@ -778,6 +851,12 @@ class Bypasser:
 
         text = snap.get("text", "")
 
+        # --- dead / 404 shortener links ----------------------------------------
+        if (host == job.base or host.endswith("." + job.base)) and not job.reached_final:
+            if re.search(r"^error:\s*404|\b404\s+not\s+found\b|page\s+not\s+found", snap.get("title", ""), re.I) or \
+               re.search(r"the requested address .* was not found on this server|\b404\s+not\s+found\b", text, re.I):
+                raise BypassError(f"Shortener link not found (404 on {host})")
+
         # --- hard blocks (VPN / datacenter IP / unsupported browser) -----------
         if BLOCK_RE.search(text) or BLOCK_RE.search(snap.get("title", "")):
             job.blocked_since = job.blocked_since or now
@@ -798,12 +877,19 @@ class Bypasser:
 
         # --- final page detection --------------------------------------------------
         on_base = host == job.base or host.endswith("." + job.base)
+        if job.base == "arolinks.com" and not on_base and host and host != CF_HOST:
+            if job.arolinks_ref_t0 is None:
+                job.arolinks_ref_t0 = now
+            job.arolinks_blog_hosts.add(host)
         if job.reached_final and not on_base and host in job.chain_hosts and "prostore7.pages.dev" not in host:
             job.reached_final = False
+            job.final_since = None
         if on_base and ("wp=" in url or snap.get("finalMarkers")) and not job.reached_final:
             job.reached_final = True
+            job.final_since = now
             job.log("Reached the shortener's final page")
         if job.reached_final:
+            job.final_since = job.final_since or now
             h = snap.get("getLinkHref") or ""
             if job.is_dest(h) and not snap.get("getLinkDisabled"):
                 job.set_result(h, "Get Link button")
@@ -817,7 +903,7 @@ class Bypasser:
                 raise BypassError(f"Cloudflare keeps re-challenging on {host} — this IP is blocked "
                                   "by Cloudflare. Use a home/mobile IP or residential proxy.")
             job.log(f"Cloudflare check on {host}… (passes automatically on a home IP)")
-            if now - job.challenge_since > 25 and now - job.challenge_click_at > 12:
+            if now - job.challenge_since > 4.0 and now - job.challenge_click_at > 6.0:
                 job.challenge_click_at = now
                 await self._click_cf_checkbox(page)
             return page
@@ -872,7 +958,7 @@ class Bypasser:
                 return page
 
         # --- shortcut: final ?wp= or final subdomain link already present in the page source --------
-        if snap.get("wpLinks") and not job.reached_final:
+        if snap.get("wpLinks") and not job.reached_final and job.base != "arolinks.com":
             target = snap["wpLinks"][0]
             job.log("⚡ Final link found in page source — skipping remaining steps")
             try:
@@ -884,16 +970,21 @@ class Bypasser:
         # --- WP safelink form: server only checks the timer token -> wait & submit ------
         forms = snap.get("safeForms") or []
         total_forms = sum(c for c, _ in job.form_submits.values())
-        if forms and not job.reached_final and total_forms < 8:
+        if forms and not job.reached_final and total_forms < 12:
             f = forms[0]
             if f["id"].endswith("_any1") and any(k[1].endswith("_get") for k in job.form_submits):
                 raise BypassError(
                     f"{job.base} server redirect loop: redirected back to {host} Step 1 after completing all 4 steps"
                 )
             ready = decode_timer_token(f.get("token"))
+            if ready is None and "admin-post.php" in (f.get("action") or ""):
+                # Step 3 admin-post.php safelink form has a 20s server-enforced timer
+                page_age = now - job.url_since
+                if page_age < 21.0:
+                    ready = time.time() + (21.0 - page_age)
             key = (url, f["id"])
             cnt, last = job.form_submits.get(key, (0, 0.0))
-            if ts_pending_check(snap):
+            if f.get("hasTs") and ts_pending_check(snap):
                 pass  # let turnstile logic below run first
             elif ready is not None and time.time() < ready + 1.0:
                 left = ready + 1.0 - time.time()
@@ -903,7 +994,7 @@ class Bypasser:
                             "(skipping ads/buttons on this page)")
                 await asyncio.sleep(min(left, 1.0))
                 return page
-            elif cnt < 3 and now - last > 8:
+            elif cnt < 5 and now - last > 8:
                 job.form_submits[key] = (cnt + 1, now)
                 job.log(f"Submitting safelink form → {short(f.get('action') or '', 70)}")
                 try:
@@ -912,7 +1003,7 @@ class Bypasser:
                     pass
                 await asyncio.sleep(1.0)
                 return page
-            elif cnt < 3:
+            elif cnt < 5:
                 await asyncio.sleep(0.5)
                 return page
 
@@ -961,12 +1052,22 @@ class Bypasser:
                 job.ts_logged.add(url)
                 job.log("Waiting for Turnstile widget to auto-pass…")
 
-        # --- final page: resubmit if the API rejected a too-early request --------
-        if job.reached_final and job.go_error and now - job.go_error_at > 3 and job.go_resubmits < 4:
-            job.go_resubmits += 1
-            job.go_error = None
-            await self._eval(page, SUBMIT_GO_FORM_JS)
-            return page
+        # --- final page: submit after 6s if template doesn't auto-submit, or resubmit on error ---
+        if job.reached_final and not ts_pending:
+            if (
+                job.base == "babylinks.in"
+                and job.final_since
+                and now - job.final_since >= 6.0
+                and job.go_resubmits == 0
+            ):
+                job.go_resubmits += 1
+                await self._eval(page, SUBMIT_GO_FORM_JS)
+                return page
+            if job.go_error and now - job.go_error_at > 3 and job.go_resubmits < 4:
+                job.go_resubmits += 1
+                job.go_error = None
+                await self._eval(page, SUBMIT_GO_FORM_JS)
+                return page
 
         # --- click the best "next step" button -------------------------------------
         for cand in snap.get("candidates") or []:
@@ -977,16 +1078,20 @@ class Bypasser:
             if now - last < 4 or cnt >= 8:
                 continue
             cand_href = (cand.get("href") or "").lower()
-            if job.base == "arolinks.com" and "bcsakhi." in host and (
-                "readmore" in cand_href or "learn_more" in cand_href or "continue" in cand["text"].lower()
-            ):
-                elapsed = time.monotonic() - job.t0
-                if elapsed < 102.0:
-                    wait_left = 102.0 - elapsed
-                    job.log(f"Waiting {wait_left:.0f}s on {host} for arolinks server-side timer (102s required)…")
-                    while time.monotonic() - job.t0 < 102.0:
+            is_arolinks_step2 = (
+                job.base == "arolinks.com"
+                and ("bcsakhi." in host or len(job.arolinks_blog_hosts) >= 2 or job.start_visits >= 2)
+                and ("readmore" in cand_href or "learn_more" in cand_href or "continue" in cand["text"].lower())
+            )
+            if is_arolinks_step2:
+                ref_t0 = job.arolinks_ref_t0 or job.t0
+                elapsed = time.monotonic() - ref_t0
+                if elapsed < 103.0:
+                    wait_left = 103.0 - elapsed
+                    job.log(f"Waiting {wait_left:.0f}s on {host} for arolinks server-side timer (103s required)…")
+                    while time.monotonic() - ref_t0 < 103.0:
                         job.url_since = time.monotonic()
-                        await asyncio.sleep(min(2.0, 102.0 - (time.monotonic() - job.t0)))
+                        await asyncio.sleep(min(2.0, 103.0 - (time.monotonic() - ref_t0)))
                     now = time.monotonic()
             job.clicks[k] = (cnt + 1, now)
             job.log(f"Click “{cand['text']}”")

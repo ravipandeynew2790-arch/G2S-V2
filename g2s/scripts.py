@@ -206,19 +206,19 @@ SCAN_JS = r"""
   const html = document.documentElement ? document.documentElement.outerHTML : '';
   const esc = arg.base.replace(/\./g, '\\.');
   const re = new RegExp('https?:(?:\\\\?/){2}(?:[\\w-]+\\.)*' + esc + '(?::\\d+)?(?:\\\\?/)[^\\s"\'<>]*?[?&]wp=[A-Za-z0-9%=_\\-]+', 'g');
-  const linkRe = new RegExp('^https?://(?:[\\w-]+\\.)*' + esc + '/[A-Za-z0-9_-]{3,}(?:\\?[^\\s"\'<>]*)?$', 'i');
   const found = new Set();
   (html.match(re) || []).forEach(u => found.add(u.replace(/\\\//g, '/').replace(/&amp;/g, '&')));
   document.querySelectorAll('a[href], form[action]').forEach(el => {
     const u = el.href || el.action || '';
     if (re.test(u)) found.add(u);
     re.lastIndex = 0;
-    if (linkRe.test(u) && !location.hostname.endsWith(arg.base)) found.add(u);
   });
   try {
-    const rtgA = document.querySelector('#rtg-snp21 a[href], a#rtg-snp21[href], a#btn7[href]');
+    const rtgA = document.querySelector('#rtg-snp21 a[href], a#rtg-snp21[href], a#btn7[href], a#btn6[href*="?wp="]');
     if (rtgA && /^https?:\/\//i.test(rtgA.href)) found.add(rtgA.href);
-    const gteA = document.getElementById('gtelinkbtn');
+    const gteA = (arg.base !== 'arolinks.com' && sessionStorage.getItem('__g2sPlugin') !== 'uopusi')
+      ? document.getElementById('gtelinkbtn')
+      : null;
     if (gteA && /^https?:\/\//i.test(gteA.href || '')) {
       let gu = gteA.href;
       if (arg.base === 'inshorturl.in') gu = gu.replace(/^https?:\/\/inshorturl\.com\//i, 'https://inshorturl.in/');
@@ -288,8 +288,10 @@ SCAN_JS = r"""
   const inputs = [...document.querySelectorAll('[name="cf-turnstile-response"]')];
   const solvedInp = inputs.find(i => (i.value || '').length > 20);
   const tokVal = window.__g2sTsToken || (solvedInp ? solvedInp.value : null);
+  const goForm = document.getElementById('go-link');
+  const goHasNoTs = arg.base === 'babylinks.in' && !!goForm;
   out.turnstile = {
-    present: keys.size > 0 || inputs.length > 0 || !!document.querySelector('.cf-turnstile, iframe[src*="challenges.cloudflare.com"]'),
+    present: !goHasNoTs && (keys.size > 0 || inputs.length > 0 || !!document.querySelector('.cf-turnstile, iframe[src*="challenges.cloudflare.com"]')),
     sitekeys: [...keys], action, cdata,
     solved: !!tokVal,
     token: tokVal,
@@ -303,7 +305,10 @@ SCAN_JS = r"""
   const timerBoxVis = vis(document.getElementById('timerBox'));
   const waitBoxVis = vis(document.getElementById('WaitBox'));
   const step1Btn = document.getElementById('startCountdownBtn') || document.getElementById('VerifyBtn');
-  const pluginType = (() => { try { return sessionStorage.getItem('__g2sPlugin'); } catch (e) { return null; } })();
+  const pluginType = (() => {
+    if (arg.base === 'arolinks.com') return 'uopusi';
+    try { return sessionStorage.getItem('__g2sPlugin'); } catch (e) { return null; }
+  })();
   document.querySelectorAll('button, a, input[type=submit], input[type=button], [role=button], [onclick]').forEach(el => {
     const inTp2 = el.id === 'tp-snp2' || !!el.closest('#tp-snp2');
     const inCross2 = el.id === 'cross-snp2' || !!el.closest('#cross-snp2');
@@ -460,10 +465,23 @@ SUBMIT_GO_FORM_JS = r"""
   const f = document.querySelector('form[action*="/links/go"], #go-link');
   if (!f) return false;
   try {
-    if (window.jQuery) {
+    if (window.jQuery && !location.hostname.endsWith('babylinks.in')) {
       window.jQuery(f).triggerHandler('submit');
       return true;
     }
+  } catch (e) {}
+  try {
+    const fd = new URLSearchParams(new FormData(f));
+    fetch(f.action || '/links/go', {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+      },
+      body: fd.toString(),
+      credentials: 'include'
+    }).catch(() => {});
+    return true;
   } catch (e) {}
   return false;
 }
