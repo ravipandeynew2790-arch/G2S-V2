@@ -18,6 +18,38 @@ INIT_SCRIPT = r"""
 
     // Decide at the first <script>: never patch anything on Cloudflare challenge pages.
     const install = () => {
+    try {
+      document.documentElement && document.documentElement.removeAttribute('webdriver');
+      const origGetAttr = Element.prototype.getAttribute;
+      Element.prototype.getAttribute = function(name) {
+        if (String(name).toLowerCase() === 'webdriver') return null;
+        return origGetAttr.apply(this, arguments);
+      };
+    } catch (e) {}
+    try {
+      const safeSetup = function(opts) {
+        if (!opts) return;
+        const form = document.getElementById(opts.formId || 'go-link');
+        const token = opts.token || '';
+        window.__g2sAroSecToken = token;
+        if (!form || !token) return;
+        let inp = form.querySelector('input[name="arolinks_sec_token"]');
+        if (!inp) {
+          inp = document.createElement('input');
+          inp.type = 'hidden';
+          inp.name = 'arolinks_sec_token';
+          form.appendChild(inp);
+        }
+        inp.value = token;
+      };
+      let _aro = { setup: safeSetup };
+      Object.defineProperty(window, 'AroShield', {
+        configurable: true,
+        enumerable: true,
+        get: () => _aro,
+        set: () => { _aro = { setup: safeSetup }; }
+      });
+    } catch (e) {}
     const FACTOR = __FACTOR__;
     const NOACCEL = __NOACCEL__;
     const noAccelHost = NOACCEL.some(h => host === h || host.endsWith('.' + h));
@@ -190,7 +222,9 @@ SCAN_JS = r"""
     }
   } catch (e) {}
   try {
-    if (document.getElementById('startCountdownBtn') || /(^|;\s*)uopusi=/.test(document.cookie)) {
+    if (/(^|;\s*)user_eiop=/.test(document.cookie)) {
+      sessionStorage.setItem('__g2sPlugin', 'user_eiop');
+    } else if (document.getElementById('startCountdownBtn') || /(^|;\s*)uopusi=/.test(document.cookie)) {
       sessionStorage.setItem('__g2sPlugin', 'uopusi');
     } else if (document.getElementById('VerifyBtn') || /(^|;\s*)user_in=/.test(document.cookie)) {
       sessionStorage.setItem('__g2sPlugin', 'user_in');
@@ -216,7 +250,7 @@ SCAN_JS = r"""
   try {
     const rtgA = document.querySelector('#rtg-snp21 a[href], a#rtg-snp21[href], a#btn7[href], a#btn6[href*="?wp="]');
     if (rtgA && /^https?:\/\//i.test(rtgA.href)) found.add(rtgA.href);
-    const gteA = (arg.base !== 'arolinks.com' && sessionStorage.getItem('__g2sPlugin') !== 'uopusi')
+    const gteA = (arg.base !== 'arolinks.com' && arg.base !== 'vplink.in' && sessionStorage.getItem('__g2sPlugin') !== 'uopusi')
       ? document.getElementById('gtelinkbtn')
       : null;
     if (gteA && /^https?:\/\//i.test(gteA.href || '')) {
@@ -304,15 +338,25 @@ SCAN_JS = r"""
   let id = 0;
   const timerBoxVis = vis(document.getElementById('timerBox'));
   const waitBoxVis = vis(document.getElementById('WaitBox'));
-  const step1Btn = document.getElementById('startCountdownBtn') || document.getElementById('VerifyBtn');
+  const hasTp2 = !!document.getElementById('tp-snp2');
+  const hasCross2 = !!document.getElementById('cross-snp2');
   const pluginType = (() => {
+    if (/(^|;\s*)user_eiop=/.test(document.cookie) && hasTp2) return 'user_eiop';
     if (arg.base === 'arolinks.com') return 'uopusi';
-    try { return sessionStorage.getItem('__g2sPlugin'); } catch (e) { return null; }
+    if (hasCross2 && !hasTp2) return 'uopusi';
+    return null;
   })();
+  const rawStep1 = (pluginType === 'user_eiop')
+    ? null
+    : (document.getElementById('startCountdownBtn') || document.getElementById('VerifyBtn'));
+  const step1Btn = (rawStep1 && vis(rawStep1) && !rawStep1.disabled) ? rawStep1 : null;
   document.querySelectorAll('button, a, input[type=submit], input[type=button], [role=button], [onclick]').forEach(el => {
     const inTp2 = el.id === 'tp-snp2' || !!el.closest('#tp-snp2');
     const inCross2 = el.id === 'cross-snp2' || !!el.closest('#cross-snp2');
+    const inBtn17 = el.id === 'btn1' || el.id === 'btn7' || !!el.closest('#btn1, #btn7');
+    if ((hasTp2 || hasCross2 || location.hostname.includes('bcsakhi.')) && inBtn17) return;
     if (step1Btn && (inTp2 || inCross2)) return;
+    if (pluginType === 'user_eiop' && (el.id === 'startCountdownBtn' || inCross2)) return;
     if (pluginType === 'uopusi' && inTp2) return;
     if (pluginType === 'user_in' && inCross2) return;
     if (inTp2 && timerBoxVis) return;
@@ -337,8 +381,10 @@ SCAN_JS = r"""
     const gid = 'c' + (id++);
     el.setAttribute('data-g2s-id', gid);
     const parentA = el.closest('a[href]');
+    const childIdEl = el.querySelector ? el.querySelector('[id]') : null;
     const href = el.getAttribute('href') || (parentA ? parentA.href : '') || '';
-    cands.push({ id: gid, text: t, tag: el.tagName, href, score });
+    const elId = el.id || (childIdEl ? childIdEl.id : '') || (parentA ? parentA.id : '') || '';
+    cands.push({ id: gid, elId, text: t, tag: el.tagName, href, score });
   });
   cands.sort((a, b) => (b.score - a.score) || ((b.href ? 1 : 0) - (a.href ? 1 : 0)));
   out.candidates = cands.slice(0, 8);
@@ -387,8 +433,46 @@ SCAN_JS = r"""
 INJECT_TOKEN_JS = r"""
 (token) => {
   window.__g2sTsToken = token;
+  window.__aroTs = token;
   let n = 0;
+  let hasAroShield = !!window.__g2sAroSecToken;
   document.querySelectorAll('[name="cf-turnstile-response"]').forEach(i => { i.value = token; n++; });
+  const goForm = document.getElementById('go-link') || document.querySelector('form[action*="/links/go"]');
+  if (goForm && !location.hostname.endsWith('babylinks.in')) {
+    let gi = goForm.querySelector('[name="cf-turnstile-response"]');
+    if (!gi) {
+      gi = document.createElement('input');
+      gi.type = 'hidden';
+      gi.name = 'cf-turnstile-response';
+      goForm.appendChild(gi);
+      n++;
+    } else if (gi.value !== token) {
+      gi.value = token;
+      n++;
+    } else if (n === 0) {
+      n++;
+    }
+    gi.value = token;
+    try {
+      const html = document.documentElement ? document.documentElement.outerHTML : '';
+      const mSec = html.match(/AroShield\.setup\(\{[\s\S]*?token:\s*["']([^"']+)["']/);
+      const secVal = (mSec && mSec[1]) || window.__g2sAroSecToken || '';
+      if (secVal) {
+        hasAroShield = true;
+        let secInp = goForm.querySelector('input[name="arolinks_sec_token"]');
+        if (!secInp) {
+          secInp = document.createElement('input');
+          secInp.type = 'hidden';
+          secInp.name = 'arolinks_sec_token';
+          goForm.appendChild(secInp);
+        }
+        secInp.value = secVal;
+      }
+    } catch (e) {}
+  }
+  if (!hasAroShield && typeof window.aroTsOk === 'function') {
+    try { window.aroTsOk(token); n++; } catch (e) {}
+  }
   document.querySelectorAll('.cf-turnstile, [data-sitekey]').forEach(el => {
     const form = el.closest('form');
     if (form && !form.querySelector('[name="cf-turnstile-response"]')) {
@@ -397,11 +481,14 @@ INJECT_TOKEN_JS = r"""
       form.appendChild(i); n++;
     }
     const cb = el.getAttribute('data-callback');
-    if (cb && typeof window[cb] === 'function') { try { window[cb](token); n++; } catch (e) {} }
+    if (cb && cb !== 'aroTsOk' && typeof window[cb] === 'function') {
+      try { window[cb](token); n++; } catch (e) {}
+    }
   });
   (window.__g2sTsWidgets || []).forEach(w => {
     try {
       const cb = w.opts && w.opts.callback;
+      if (hasAroShield && (cb === window.aroTsOk || cb === 'aroTsOk')) return;
       if (typeof cb === 'function') { cb(token); n++; }
       else if (typeof cb === 'string' && typeof window[cb] === 'function') { window[cb](token); n++; }
     } catch (e) {}
@@ -429,6 +516,14 @@ JS_CLICK = r"""
   const el = document.querySelector('[data-g2s-id="' + gid + '"]');
   if (!el) return false;
   el.scrollIntoView({ block: 'center' });
+  if (el.id === 'btn7') {
+    document.cookie = 'iotes=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    const b1 = document.getElementById('btn1');
+    if (b1 && b1.href && !b1.href.startsWith('javascript:')) {
+      window.location.href = b1.href;
+      return true;
+    }
+  }
   const parentA = el.closest('a[href]');
   if (parentA && parentA.href && !parentA.href.startsWith('javascript:') && !parentA.href.endsWith('#')) {
     const oc = parentA.getAttribute('onclick') || '';
@@ -436,13 +531,14 @@ JS_CLICK = r"""
       el.click();
       return true;
     }
-    if (/learn_more\.php/i.test(parentA.href)) {
-      window.location.href = parentA.href;
-      return true;
-    }
-    if (parentA.id === 'cross-snp2' || /\/readmore/i.test(parentA.href)) {
+    if (el.id === 'cross-snp2' || parentA.id === 'cross-snp2' || /\/readmore/i.test(parentA.href) || document.getElementById('cross-snp2')) {
       document.cookie = '_uocat=value; path=/; max-age=86400';
-      el.click();
+    }
+    if (/learn_more\.php/i.test(parentA.href)) {
+      document.cookie = 'user_eiop=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie = 'user_in=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie = 'iotes=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      try { el.click(); } catch (e) {}
       window.location.href = parentA.href;
       return true;
     }
@@ -458,15 +554,59 @@ JS_CLICK = r"""
 SUBMIT_GO_FORM_JS = r"""
 () => {
   const gl = document.querySelector('a.get-link');
-  if (gl && gl.href && !gl.href.endsWith('#') && !gl.href.startsWith('javascript:')) {
+  if (gl && gl.href && !gl.href.endsWith('#') && !gl.href.startsWith('javascript:') &&
+      !/effectivecpmnetwork|highperformanceformat|profitablecpmrate|achievablecpmrevenue/i.test(gl.href)) {
     gl.click();
     return true;
   }
   const f = document.querySelector('form[action*="/links/go"], #go-link');
   if (!f) return false;
   try {
-    if (window.jQuery && !location.hostname.endsWith('babylinks.in')) {
-      window.jQuery(f).triggerHandler('submit');
+    f.classList.add('go-link');
+    const html = document.documentElement ? document.documentElement.outerHTML : '';
+    const mSec = html.match(/AroShield\.setup\(\{[\s\S]*?token:\s*["']([^"']+)["']/);
+    const secVal = (mSec && mSec[1]) || window.__g2sAroSecToken || '';
+    if (secVal) {
+      let secInp = f.querySelector('input[name="arolinks_sec_token"]');
+      if (!secInp) {
+        secInp = document.createElement('input');
+        secInp.type = 'hidden';
+        secInp.name = 'arolinks_sec_token';
+        f.appendChild(secInp);
+      }
+      secInp.value = secVal;
+    }
+    const tok = window.__g2sTsToken || window.__aroTs || '';
+    if (tok && !location.hostname.endsWith('babylinks.in')) {
+      window.__aroTs = tok;
+      let gi = f.querySelector('[name="cf-turnstile-response"]');
+      if (!gi) {
+        gi = document.createElement('input');
+        gi.type = 'hidden';
+        gi.name = 'cf-turnstile-response';
+        f.appendChild(gi);
+      }
+      gi.value = tok;
+    }
+  } catch (e) {}
+  try {
+    if (window.jQuery && window.jQuery.ajax && !location.hostname.endsWith('babylinks.in')) {
+      window.jQuery.ajax({
+        dataType: 'json',
+        type: 'POST',
+        url: f.getAttribute('action') || '/links/go',
+        data: window.jQuery(f).serialize(),
+        success: function(result) {
+          if (result && result.url) {
+            window.finalLink = result.url;
+            const a = document.querySelector('a.get-link');
+            if (a) {
+              a.setAttribute('href', result.url);
+              a.classList.remove('disabled');
+            }
+          }
+        }
+      });
       return true;
     }
   } catch (e) {}

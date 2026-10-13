@@ -31,14 +31,14 @@ def esc(val: Any) -> str:
 
 def estimate_duration(url: str) -> float:
     h = (urlparse(url).hostname or "").lower()
-    if "arolinks." in h:
+    if "arolinks." in h or "vplink." in h:
         return 115.0
-    if "vplink." in h or "inshorturl." in h:
+    if "inshorturl." in h:
         return 90.0
     if "get2short." in h or "liteshort." in h or "nowshort." in h or "linksflys." in h:
         return 48.0
     if "softurl." in h or "jobsraavi." in h:
-        return 30.0
+        return 35.0
     if "babylinks." in h:
         return 18.0
     if "linksfire." in h:
@@ -94,6 +94,7 @@ class TelegramBot:
         self.set_proxy_fn = set_proxy_fn
 
         self.token: str = ""
+        self._invalid_token: str = ""
         self.bot_info: dict | None = None
         self.running: bool = False
         self._task: asyncio.Task | None = None
@@ -124,9 +125,12 @@ class TelegramBot:
         me = await self.api("getMe")
         if not me or not me.get("ok"):
             err = (me or {}).get("description", "invalid token or network error")
+            if "unauthorized" in str(err).lower():
+                self._invalid_token = token
             print(f"⚠ Telegram Bot failed to start: {err}", flush=True)
             await self.stop()
             return False
+        self._invalid_token = ""
         self.bot_info = me.get("result") or {}
         uname = self.bot_info.get("username", "unknown")
         print(f"✔ Telegram Bot started: @{uname} (ID: {self.bot_info.get('id')})", flush=True)
@@ -154,6 +158,8 @@ class TelegramBot:
 
     async def reload_if_needed(self):
         new_token = (self.db.settings.get("telegram_bot_token") or "").strip()
+        if new_token and new_token == self._invalid_token:
+            return
         if new_token != self.token or (new_token and not self.running):
             if new_token:
                 await self.start()

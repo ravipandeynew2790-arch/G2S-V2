@@ -272,14 +272,26 @@ class Database:
             doc = await self.db.settings.find_one({"_id": "global"})
             if doc:
                 doc.pop("_id", None)
-                # Merge saved MongoDB settings, while allowing explicit non-empty config/env
-                # credentials (like newly added telegram_bot_token / owner_id) to take effect.
+                env_token = bool(
+                    os.environ.get("G2S_BOT_TOKEN")
+                    or os.environ.get("TELEGRAM_BOT_TOKEN")
+                    or os.environ.get("BOT_TOKEN")
+                )
+                env_proxy = "G2S_PROXY" in os.environ
                 for k, v in doc.items():
-                    if k in ("telegram_bot_token", "telegram_api_hash") and self.settings.get(k):
-                        continue
-                    if k in ("telegram_api_id", "owner_id") and self.settings.get(k):
-                        continue
-                    if k == "admin_ids" and self.settings.get("admin_ids"):
+                    if k == "telegram_bot_token":
+                        if env_token or not str(v or "").strip():
+                            continue
+                    elif k == "proxy":
+                        if env_proxy or not str(v or "").strip():
+                            continue
+                    elif k in ("telegram_api_hash", "admin_password"):
+                        if not str(v or "").strip():
+                            continue
+                    elif k in ("telegram_api_id", "owner_id"):
+                        if not v:
+                            continue
+                    elif k == "admin_ids" and self.settings.get("admin_ids"):
                         merged = list(self.settings["admin_ids"])
                         for aid in _clean_int_list(v):
                             if aid not in merged:
@@ -297,10 +309,18 @@ class Database:
             )
             self.save_config_file()
 
-            # Load Mongo cache into local mirror & push any local cache items to Mongo
+            # Purge any poisoned arolinks/vplink local cache entries (<103s elapsed)
+            for src, item in list(self.local_cache.items()):
+                if ("arolinks.com/" in src or "vplink.in/" in src) and float(item.get("elapsed") or 0) < 103.0 and item.get("method") != "manual":
+                    self.local_cache.pop(src, None)
+
+            # Load Mongo cache into local mirror & push any valid local cache items to Mongo
             async for item in self.db.cache.find({}):
                 src = item.get("source") or item.get("_id")
                 if src:
+                    if ("arolinks.com/" in src or "vplink.in/" in src) and float(item.get("elapsed") or 0) < 103.0 and item.get("method") != "manual":
+                        await self.db.cache.delete_one({"_id": item.get("_id")})
+                        continue
                     clean = {k: v for k, v in item.items() if k != "_id"}
                     self.local_cache[src] = clean
             for src, item in list(self.local_cache.items()):
@@ -433,29 +453,46 @@ class Database:
         ttl = float(self.settings.get("cache_hours", 24)) * 3600.0
         now = time.time()
 
-        hit = self.local_cache.get(key)
-        if (not hit or now - float(hit.get("at", 0)) >= ttl) and self.connected and self.db is not None:
-            try:
-                doc = await self.db.cache.find_one({"_id": key})
-                if doc:
-                    doc.pop("_id", None)
-                    self.local_cache[key] = doc
-                    hit = doc
-            except Exception:
-                pass
+        keys_to_try = [key]
+        if "://vplink.in/" in key:
+            prefix, _, slug = key.rpartition("/")
+            if slug.startswith("__") and slug.endswith("__") and len(slug) > 4:
+                keys_to_try.append(f"{prefix}/{slug[2:-2]}")
+            elif slug:
+                keys_to_try.append(f"{prefix}/__{slug}__")
+
+        hit = None
+        hit_key = key
+        for k_try in keys_to_try:
+            cand = self.local_cache.get(k_try)
+            if (not cand or now - float(cand.get("at", 0)) >= ttl) and self.connected and self.db is not None:
+                try:
+                    doc = await self.db.cache.find_one({"_id": k_try})
+                    if doc:
+                        doc.pop("_id", None)
+                        self.local_cache[k_try] = doc
+                        cand = doc
+                except Exception:
+                    pass
+            if cand:
+                if ("arolinks.com/" in k_try or "vplink.in/" in k_try) and float(cand.get("elapsed") or 0) < 103.0 and cand.get("method") != "manual":
+                    await self.delete_cache(k_try)
+                    continue
+                if now - float(cand.get("at", 0)) < ttl:
+                    hit = cand
+                    hit_key = k_try
+                    break
 
         if not hit:
             return None
-        if now - float(hit.get("at", 0)) >= ttl:
-            return None
 
         hit["hits"] = int(hit.get("hits", 0)) + 1
-        self.local_cache[key] = hit
+        self.local_cache[hit_key] = hit
 
         async def _bg_inc():
             if self.connected and self.db is not None:
                 try:
-                    await self.db.cache.update_one({"_id": key}, {"$inc": {"hits": 1}})
+                    await self.db.cache.update_one({"_id": hit_key}, {"$inc": {"hits": 1}})
                 except Exception:
                     pass
             await self.increment_stat("cache_hits", 1)

@@ -214,6 +214,10 @@ async def resolve_link_core(
         asyncio.create_task(bot.notify_error_log(entry))
         if not fut.done():
             fut.set_exception(e)
+            try:
+                fut.exception()
+            except Exception:
+                pass
         raise
     finally:
         if _inflight.get(key, {}).get("fut") is fut:
@@ -628,6 +632,8 @@ async def _background_sync_and_tunnel_monitor():
         try:
             await db.refresh_settings_from_mongo()
             _apply_db_settings_to_cfg()
+            if cfg.proxy != bypasser.cfg.proxy and not bypasser.busy:
+                await bypasser.set_proxy(cfg.proxy)
             await bot.reload_if_needed()
             active_px = (db.settings.get("proxy") or "").strip()
             if active_px and not db.settings.get("proxy_expired") and not bypasser.busy:

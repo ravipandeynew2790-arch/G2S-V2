@@ -2,7 +2,7 @@
   "brand_name": "TheDrunkBots",
   "admin_password": "admin123",
   "mongo_uri": "mongodb+srv://shauryasharma9940_db_user:hi1OxTU3GdXFtRLf@g2sv2.fnvvosz.mongodb.net/?appName=G2SV2",
-  "telegram_bot_token": "8958607022:AAGFD0dvD6KHB8Km2-K4XuDlQd2MdgPKRsk",
+  "telegram_bot_token": "8958607022:AAFmDjt8_cpdI-aoZ8JmfxSuUGRQJQY2qZ4",
   "telegram_api_id": 25396020,
   "telegram_api_hash": "228ea638bed51dd4ae3cc9e4e51e198c",
   "owner_id": 8584220782,
@@ -50,7 +50,7 @@
   "port": 8080,
   "cache_enabled": true,
   "cache_hours": 168.0,
-  "proxy": "http://g2s:7517d3331c@fpska-117-235-174-54.run.pinggy-free.link:38953",
+  "proxy": "http://g2s:ac915a66ec@bxcyg-59-91-74-202.run.pinggy-free.link:45003",
   "welcome_message": "👋 <b>Hey {first_name}!</b>\n<blockquote>⚡ <b>Send me any supported shortlink and I will bypass ads, timers & captchas automatically to give you the direct destination link!</b></blockquote>\n\n✨ <b>𝗙𝗘𝗔𝗧𝗨𝗥𝗘𝗦 :</b>\n<blockquote>• 🚀 <b>Instant Cloud Cache</b> (0.01s for repeated links)\n• 📊 <b>Live Progress Bar & ETA</b> while bypassing\n• 🛡 <b>Auto Turnstile & Multi-Step Solver</b>\n• 🔗 <b>15+ Shorteners Supported</b></blockquote>\n━━━━━━━━━━━━━━━━━━━━━━\n🏷 <b>𝗣𝗢𝗪𝗘𝗥𝗘𝗗 𝗕𝗬 :</b> <code>{brand}</code>",
   "proxy_expired": false,
   "proxy_expired_notified_for": ""

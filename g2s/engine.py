@@ -184,6 +184,7 @@ class Job:
         self.pending_redirect = None
         self.pending_redirect_used = set()
         self.tried_tokens = set()
+        self.injected_at = {}
         self.arolinks_ref_t0 = None
         self.arolinks_blog_hosts = set()
         self.final_since = None
@@ -233,7 +234,19 @@ class Job:
         if not url.lower().startswith(("http://", "https://")):
             return False
         h = host_of(url)
-        return bool(h) and not self.is_chain(url) and h != CF_HOST
+        if not h or self.is_chain(url) or h == CF_HOST:
+            return False
+        if re.search(
+            r"(^|\.)(effectivecpmnetwork\.com|highperformanceformat\.com|profitablecpmrate\.com|"
+            r"achievablecpmrevenue\.com|alwingulla\.com|onclickalgo\.com|doubleclick\.net|"
+            r"googlesyndication\.com|googleadservices\.com|adsterra\.com|popads\.net|"
+            r"popcash\.net|propellerads\.com|exoclick\.com|juicyads\.com|hilltopads\.net|"
+            r"a-ads\.com|admaven\.com|clksite\.com|trafficjunky\.net|realsrv\.com)$",
+            h,
+            re.I,
+        ):
+            return False
+        return True
 
 
 def ts_pending_check(snap):
@@ -445,6 +458,9 @@ class Bypasser:
                     or "server redirect loop" in err_low
                     or "404" in err_low
                     or "not found" in err_low
+                    or "google account" in err_low
+                    or "oauth" in err_low
+                    or "scrambled destination" in err_low
                 ):
                     raise
                 log(f"⚠ {e} — retrying once with real-time timers (no acceleration)…")
@@ -472,10 +488,10 @@ class Bypasser:
             page = await self.ctx.new_page()
         self.current_page = page
         self.busy = True
-        if job.base == "arolinks.com":
+        if job.base in ("arolinks.com", "vplink.in"):
             try:
                 await self.ctx.clear_cookies(
-                    domain=re.compile(r"(^|\.)(arolinks\.com|techmint\.in|rupeeriser\.in|bcsakhi\.in)$")
+                    domain=re.compile(r"(^|\.)(arolinks\.com|vplink\.in|techmint\.in|rupeeriser\.in|bcsakhi\.in)$")
                 )
             except Exception:
                 pass
@@ -513,8 +529,19 @@ class Bypasser:
         finally:
             self.busy = False
             self.current_page = None
+            if job.result.done():
+                try:
+                    job.result.exception()
+                except Exception:
+                    pass
             for t in job.solver_tasks.values():
-                t.cancel()
+                if t.done():
+                    try:
+                        t.exception()
+                    except Exception:
+                        pass
+                else:
+                    t.cancel()
             for p in list(self.ctx.pages) if self.ctx else []:
                 if p is getattr(self, "_keeper", None):
                     continue
@@ -522,6 +549,20 @@ class Bypasser:
                     await p.close()
                 except Exception:
                     pass
+
+    def _aiohttp_proxy_kwargs(self) -> dict:
+        if not self.cfg.proxy:
+            return {}
+        from urllib.parse import unquote
+        import base64
+        p = urlparse(self.cfg.proxy)
+        kw = {"proxy": f"{p.scheme}://{p.hostname}:{p.port}" if p.port else f"{p.scheme}://{p.hostname}"}
+        if p.username:
+            user = unquote(p.username)
+            pwd = unquote(p.password or "")
+            token = base64.b64encode(f"{user}:{pwd}".encode("utf-8")).decode("ascii")
+            kw["proxy_headers"] = {"Proxy-Authorization": f"Basic {token}"}
+        return kw
 
     async def _unwrap_antibypass_track(self, job, track_url: str, referer_url: str) -> bool:
         try:
@@ -531,11 +572,13 @@ class Bypasser:
                   "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
             p_ref = urlparse(referer_url)
             ref = f"{p_ref.scheme}://{p_ref.hostname}/" if p_ref.hostname else referer_url
+            pkw = self._aiohttp_proxy_kwargs()
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as s:
                 async with s.get(
                     track_url,
                     headers={"User-Agent": ua, "Referer": ref},
                     allow_redirects=False,
+                    **pkw,
                 ) as r:
                     loc = r.headers.get("Location") or r.headers.get("location")
                     if not loc:
@@ -558,15 +601,38 @@ class Bypasser:
             access_token = (q.get("accessToken") or [None])[0]
             if not link_id or not access_token or not token:
                 return False
+            if self.current_page and (p.hostname or "") in (self.current_page.url or ""):
+                try:
+                    data = await self._eval(
+                        self.current_page,
+                        r"""async ([linkId, tok, accessTok]) => {
+                            try {
+                                const r = await fetch('https://antibypass-bot.prostore7.workers.dev/verify/' + linkId, {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({token: tok, accessToken: accessTok})
+                                });
+                                return await r.json();
+                            } catch (e) { return null; }
+                        }""",
+                        [link_id, token, access_token],
+                    )
+                    if isinstance(data, dict) and data.get("success") and data.get("originalUrl"):
+                        job.set_result(data["originalUrl"], "antibypass verify API")
+                        return True
+                except Exception:
+                    pass
             import aiohttp
             ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
             origin = f"{p.scheme}://{p.hostname}"
+            pkw = self._aiohttp_proxy_kwargs()
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as s:
                 async with s.post(
                     f"https://antibypass-bot.prostore7.workers.dev/verify/{link_id}",
                     json={"token": token, "accessToken": access_token},
                     headers={"User-Agent": ua, "Origin": origin, "Referer": origin + "/"},
+                    **pkw,
                 ) as r:
                     data = await r.json(content_type=None)
                     if isinstance(data, dict) and data.get("success") and data.get("originalUrl"):
@@ -636,9 +702,18 @@ class Bypasser:
                     return
                 if "/links/go" in u and resp.request.method == "POST":
                     data = await resp.json()
+                    if data.get("status") == "google_required":
+                        job.fatal = f"{job.base} requires Google Account Sign-In (OAuth) on this link"
+                        return
                     if data.get("status") == "success" and data.get("url"):
                         dest_url = data["url"]
                         if job.is_dest(dest_url):
+                            if job.base == "vplink.in" and "start=" in dest_url and data.get("message") == "":
+                                job.fatal = (
+                                    "vplink.in returned a scrambled destination URL "
+                                    "(active residential proxy/tunnel required)"
+                                )
+                                return
                             job.set_result(dest_url, "links/go API")
                         elif dest_url.split("#")[0].rstrip("/") == job.start_url.split("#")[0].rstrip("/"):
                             job.go_error = "timer not ready"
@@ -797,6 +872,26 @@ class Bypasser:
                     except Exception:
                         pass
 
+        # --- alpha-links.in: unwrap finance.apnamaterials.site directly to ai3.alpha-links.in ---
+        if job.base == "alpha-links.in" and "apnamaterials.site" in host and not job.reached_final:
+            if "alphalinks_unwrapped" not in job.shortcut_used:
+                alias = urlparse(job.start_url).path.strip("/")
+                if alias:
+                    job.shortcut_used.add("alphalinks_unwrapped")
+                    target = f"https://ai3.alpha-links.in/{alias}"
+                    job.log(f"⚡ Unwrapping alpha-links step chain → {target}")
+                    try:
+                        await self.ctx.clear_cookies(domain=re.compile(r"(^|\.)alpha-links\.in$"))
+                        await page.goto(
+                            target,
+                            wait_until="commit",
+                            timeout=30000,
+                            referer="https://finance.apnamaterials.site/?p=16",
+                        )
+                        return page
+                    except Exception:
+                        pass
+
         if job.pending_redirect and job.pending_redirect not in job.pending_redirect_used:
             target = job.pending_redirect
             job.pending_redirect_used.add(target)
@@ -865,6 +960,16 @@ class Bypasser:
                                   "Run on a normal home/mobile connection with VPN off.")
         else:
             job.blocked_since = None
+        if re.search(r"too early\s*-\s*shortxlinks|too early.*wait", snap.get("title", "") + " " + text, re.I) \
+                and now - job.reload_at > 5:
+            job.reload_at = now
+            job.log("Server says Too Early — waiting 4s and reloading")
+            try:
+                await asyncio.sleep(4.0)
+                await page.reload(wait_until="commit")
+            except Exception:
+                pass
+            return page
         if re.search(r"verification failed|please refresh and try again", text, re.I) \
                 and now - job.reload_at > 10:
             job.reload_at = now
@@ -877,7 +982,7 @@ class Bypasser:
 
         # --- final page detection --------------------------------------------------
         on_base = host == job.base or host.endswith("." + job.base)
-        if job.base == "arolinks.com" and not on_base and host and host != CF_HOST:
+        if job.base in ("arolinks.com", "vplink.in") and not on_base and host and host != CF_HOST:
             if job.arolinks_ref_t0 is None:
                 job.arolinks_ref_t0 = now
             job.arolinks_blog_hosts.add(host)
@@ -940,7 +1045,7 @@ class Bypasser:
         nwp = snap.get("newWpSafelink")
         if nwp and not job.reached_final:
             target = nwp.get("url")
-            delay = float(nwp.get("delay") or 25) + 1.0
+            delay = max(float(nwp.get("delay") or 25) + 8.0, 33.0)
             if target and target not in job.shortcut_used:
                 elapsed = time.monotonic() - job.t0
                 if elapsed < delay:
@@ -951,14 +1056,15 @@ class Bypasser:
                         await asyncio.sleep(min(1.5, delay - (time.monotonic() - job.t0)))
                 job.shortcut_used.add(target)
                 job.log(f"⚡ Jumping to safelink destination → {short(target)}")
+                ref_u = "https://mtc2.jobsraavi.in/" if "jobsraavi.in" in host else url
                 try:
-                    await page.goto(target, wait_until="commit", referer=url)
+                    await page.goto(target, wait_until="commit", referer=ref_u)
                 except Exception:
                     pass
                 return page
 
         # --- shortcut: final ?wp= or final subdomain link already present in the page source --------
-        if snap.get("wpLinks") and not job.reached_final and job.base != "arolinks.com":
+        if snap.get("wpLinks") and not job.reached_final and job.base not in ("arolinks.com", "vplink.in"):
             target = snap["wpLinks"][0]
             job.log("⚡ Final link found in page source — skipping remaining steps")
             try:
@@ -1020,6 +1126,7 @@ class Bypasser:
         for key, task in list(job.solver_tasks.items()):
             if task.done() and key not in job.injected:
                 job.injected.add(key)
+                job.injected_at[key] = now
                 if key[0] != url:
                     continue
                 try:
@@ -1041,8 +1148,9 @@ class Bypasser:
             if keys and now - first >= grace:
                 key = (url, keys[0])
                 running = key in job.solver_tasks and not job.solver_tasks[key].done()
+                can_retry = key in job.injected and (now - job.injected_at.get(key, 0.0) > 15.0)
                 if not running and job.solver_calls < cfg.max_solver_calls and \
-                        (key not in job.solver_tasks or key in job.injected):
+                        (key not in job.solver_tasks or can_retry):
                     job.solver_calls += 1
                     job.injected.discard(key)
                     job.log(f"Turnstile not auto-passed — asking solver (sitekey {keys[0][:14]}…)")
@@ -1052,18 +1160,20 @@ class Bypasser:
                 job.ts_logged.add(url)
                 job.log("Waiting for Turnstile widget to auto-pass…")
 
-        # --- final page: submit after 6s if template doesn't auto-submit, or resubmit on error ---
+        # --- final page: submit after timer if template doesn't auto-submit, or resubmit on error ---
         if job.reached_final and not ts_pending:
+            wait_needed = 6.0 if job.base in ("babylinks.in", "softurl.in") else 10.5
             if (
-                job.base == "babylinks.in"
-                and job.final_since
-                and now - job.final_since >= 6.0
+                job.final_since
+                and now - job.final_since >= wait_needed
                 and job.go_resubmits == 0
+                and not job.pending_redirect
             ):
                 job.go_resubmits += 1
+                job.log("Submitting final form to fetch destination…")
                 await self._eval(page, SUBMIT_GO_FORM_JS)
                 return page
-            if job.go_error and now - job.go_error_at > 3 and job.go_resubmits < 4:
+            if job.go_error and now - job.go_error_at > 4 and job.go_resubmits < 4:
                 job.go_resubmits += 1
                 job.go_error = None
                 await self._eval(page, SUBMIT_GO_FORM_JS)
@@ -1078,17 +1188,21 @@ class Bypasser:
             if now - last < 4 or cnt >= 8:
                 continue
             cand_href = (cand.get("href") or "").lower()
+            cand_el_id = (cand.get("elId") or "").lower()
             is_arolinks_step2 = (
-                job.base == "arolinks.com"
+                job.base in ("arolinks.com", "vplink.in")
                 and ("bcsakhi." in host or len(job.arolinks_blog_hosts) >= 2 or job.start_visits >= 2)
-                and ("readmore" in cand_href or "learn_more" in cand_href or "continue" in cand["text"].lower())
+                and (
+                    "readmore" in cand_href
+                    or cand_el_id == "cross-snp2"
+                )
             )
             if is_arolinks_step2:
                 ref_t0 = job.arolinks_ref_t0 or job.t0
                 elapsed = time.monotonic() - ref_t0
                 if elapsed < 103.0:
                     wait_left = 103.0 - elapsed
-                    job.log(f"Waiting {wait_left:.0f}s on {host} for arolinks server-side timer (103s required)…")
+                    job.log(f"Waiting {wait_left:.0f}s on {host} for {job.base} server-side timer (103s required)…")
                     while time.monotonic() - ref_t0 < 103.0:
                         job.url_since = time.monotonic()
                         await asyncio.sleep(min(2.0, 103.0 - (time.monotonic() - ref_t0)))
@@ -1100,7 +1214,7 @@ class Bypasser:
             return page
 
         # --- "click on an ad, wait, come back" gates -------------------------------
-        if snap.get("adsHint") and not ts_pending and now - job.last_ad_end > 2.5:
+        if snap.get("adsHint") and not job.reached_final and not ts_pending and now - job.last_ad_end > 2.5:
             n = job.ad_attempts.get(url, 0)
             plan = [2.5, 11.0, 21.0, 21.0]
             if n < len(plan):
@@ -1137,10 +1251,21 @@ class Bypasser:
                 el.click();
                 return 'verify-btn';
               }
+              if (el.id === 'btn7') {
+                document.cookie = 'iotes=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+                const b1 = document.getElementById('btn1');
+                if (b1 && b1.href && !b1.href.startsWith('javascript:')) {
+                  window.location.href = b1.href;
+                  return 'nav:' + b1.href;
+                }
+                el.click();
+                return 'btn7-click';
+              }
               const a = el.closest('a[href]');
               if (!a || !a.href || a.href.startsWith('javascript:')) return null;
               const oc = a.getAttribute('onclick') || '';
               if (/specialActionHandler/i.test(oc)) {
+                document.cookie = 'user_eiop=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
                 let target = null;
                 const origOpen = window.open;
                 window.open = function(u) { target = u; return window; };
@@ -1152,17 +1277,24 @@ class Bypasser:
                   }
                 } catch (e) {}
                 window.open = origOpen;
-                const navUrl = target || window.location.href;
+                const navUrl = target || window.location.href.split('#')[0];
                 setTimeout(() => { window.location.href = navUrl; }, 50);
                 return 'nav:' + navUrl;
               }
-              if (a.id === 'cross-snp2' || /\/readmore/i.test(a.href)) {
+              if (el.id === 'cross-snp2' || a.id === 'cross-snp2' || /\/readmore/i.test(a.href)) {
                 document.cookie = '_uocat=value; path=/; max-age=86400';
+                document.cookie = 'iotes=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
                 try { el.click(); } catch (e) {}
                 window.location.href = a.href;
                 return 'nav:' + a.href;
               }
-              if (/learn_more\\.php/i.test(a.href)) {
+              if (/learn_more\.php/i.test(a.href)) {
+                document.cookie = 'user_eiop=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+                document.cookie = 'user_in=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+                document.cookie = 'iotes=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+                if (document.getElementById('cross-snp2')) {
+                  document.cookie = '_uocat=value; path=/; max-age=86400';
+                }
                 window.location.href = a.href;
                 return 'nav:' + a.href;
               }
