@@ -221,6 +221,8 @@ class Job:
 
     def set_result(self, url, method):
         if not self.result.done():
+            if re.search(r"://(t\.me|telegram\.me)/", url, re.I):
+                url = re.sub(r"&reason=\d+$", "", url)
             self.method = method
             self.result.set_result(url)
 
@@ -230,21 +232,29 @@ class Job:
             return True
         return h in self.chain_hosts or h == self.base or h.endswith("." + self.base)
 
+    def is_ad_domain(self, url):
+        h = host_of(url)
+        if not h:
+            return False
+        return bool(
+            re.search(
+                r"(^|\.)(effectivecpmnetwork\.com|highperformanceformat\.com|profitablecpmrate\.com|"
+                r"achievablecpmrevenue\.com|alwingulla\.com|onclickalgo\.com|doubleclick\.net|"
+                r"googlesyndication\.com|googleadservices\.com|adsterra\.com|popads\.net|"
+                r"popcash\.net|propellerads\.com|exoclick\.com|juicyads\.com|hilltopads\.net|"
+                r"a-ads\.com|admaven\.com|clksite\.com|trafficjunky\.net|realsrv\.com|pornworks\.com)$",
+                h,
+                re.I,
+            )
+        )
+
     def is_dest(self, url):
         if not url.lower().startswith(("http://", "https://")):
             return False
         h = host_of(url)
         if not h or self.is_chain(url) or h == CF_HOST:
             return False
-        if re.search(
-            r"(^|\.)(effectivecpmnetwork\.com|highperformanceformat\.com|profitablecpmrate\.com|"
-            r"achievablecpmrevenue\.com|alwingulla\.com|onclickalgo\.com|doubleclick\.net|"
-            r"googlesyndication\.com|googleadservices\.com|adsterra\.com|popads\.net|"
-            r"popcash\.net|propellerads\.com|exoclick\.com|juicyads\.com|hilltopads\.net|"
-            r"a-ads\.com|admaven\.com|clksite\.com|trafficjunky\.net|realsrv\.com)$",
-            h,
-            re.I,
-        ):
+        if self.is_ad_domain(url):
             return False
         return True
 
@@ -652,6 +662,9 @@ class Bypasser:
         async def route_handler(route, request):
             try:
                 u = request.url
+                if request.is_navigation_request() and request.frame == page.main_frame and job.is_ad_domain(u):
+                    await route.abort()
+                    return
                 if (job.reached_final and request.is_navigation_request()
                         and request.frame == page.main_frame and job.is_dest(u)):
                     job.set_result(u, "redirect")
@@ -872,25 +885,81 @@ class Bypasser:
                     except Exception:
                         pass
 
-        # --- alpha-links.in: unwrap finance.apnamaterials.site directly to ai3.alpha-links.in ---
-        if job.base == "alpha-links.in" and "apnamaterials.site" in host and not job.reached_final:
+        # --- alpha-links.in: unwrap safelink blog directly to ai3.alpha-links.in after 26s bs_start timer ---
+        if (
+            job.base == "alpha-links.in"
+            and not job.reached_final
+            and host
+            and host != "alpha-links.in"
+            and not host.endswith(".alpha-links.in")
+            and host != CF_HOST
+        ):
             if "alphalinks_unwrapped" not in job.shortcut_used:
                 alias = urlparse(job.start_url).path.strip("/")
                 if alias:
+                    elapsed = time.monotonic() - job.t0
+                    if elapsed < 26.0:
+                        wait_left = 26.0 - elapsed
+                        job.log(f"⏳ Waiting {wait_left:.0f}s for alpha-links server timer (25s required)…")
+                        while time.monotonic() - job.t0 < 26.0:
+                            job.url_since = time.monotonic()
+                            await asyncio.sleep(min(1.5, 26.0 - (time.monotonic() - job.t0)))
                     job.shortcut_used.add("alphalinks_unwrapped")
                     target = f"https://ai3.alpha-links.in/{alias}"
                     job.log(f"⚡ Unwrapping alpha-links step chain → {target}")
                     try:
-                        await self.ctx.clear_cookies(domain=re.compile(r"(^|\.)alpha-links\.in$"))
+                        await self.ctx.add_cookies([
+                            {"name": "ab", "value": "2", "domain": "ai3.alpha-links.in", "path": "/"}
+                        ])
                         await page.goto(
                             target,
                             wait_until="commit",
                             timeout=30000,
-                            referer="https://finance.apnamaterials.site/?p=16",
+                            referer="https://work.jobsheel.com/railway-jobs-qualification-age-limit/",
                         )
                         return page
                     except Exception:
                         pass
+
+        # --- vipshort.in: unwrap myphp.php / blog via POST vip1=4 directly to m.vipshort.in ---
+        if (
+            job.base == "vipshort.in"
+            and not job.reached_final
+            and host
+            and host != "vipshort.in"
+            and not host.endswith(".vipshort.in")
+            and "google." not in host
+            and host != CF_HOST
+        ):
+            if "vipshort_unwrapped" not in job.shortcut_used:
+                job.shortcut_used.add("vipshort_unwrapped")
+                job.log(f"⚡ Unwrapping vipshort step chain on {host} via vip1=4…")
+                try:
+                    m_url = await self._eval(
+                        page,
+                        r"""async () => {
+                            try {
+                                const r = await fetch('/', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                                    body: 'vip1=4',
+                                    credentials: 'include'
+                                });
+                                const html = await r.text();
+                                const m = html.match(/https:\/\/m\.vipshort\.in\/[^\s"'<>]+/);
+                                return m ? m[0].replace(/&amp;/g, '&') : null;
+                            } catch (e) { return null; }
+                        }""",
+                    )
+                    if m_url and str(m_url).startswith("http"):
+                        job.log(f"⚡ Final link obtained → {short(m_url)}")
+                        await self.ctx.add_cookies([
+                            {"name": "ab", "value": "2", "domain": "m.vipshort.in", "path": "/"}
+                        ])
+                        await page.goto(m_url, wait_until="domcontentloaded", timeout=30000, referer=f"https://{host}/")
+                        return page
+                except Exception:
+                    pass
 
         if job.pending_redirect and job.pending_redirect not in job.pending_redirect_used:
             target = job.pending_redirect
@@ -1162,7 +1231,7 @@ class Bypasser:
 
         # --- final page: submit after timer if template doesn't auto-submit, or resubmit on error ---
         if job.reached_final and not ts_pending:
-            wait_needed = 6.0 if job.base in ("babylinks.in", "softurl.in") else 10.5
+            wait_needed = 6.0 if job.base in ("babylinks.in", "softurl.in", "alpha-links.in") else 10.5
             if (
                 job.final_since
                 and now - job.final_since >= wait_needed
@@ -1190,11 +1259,20 @@ class Bypasser:
             cand_href = (cand.get("href") or "").lower()
             cand_el_id = (cand.get("elId") or "").lower()
             is_arolinks_step2 = (
-                job.base in ("arolinks.com", "vplink.in")
-                and ("bcsakhi." in host or len(job.arolinks_blog_hosts) >= 2 or job.start_visits >= 2)
-                and (
-                    "readmore" in cand_href
-                    or cand_el_id == "cross-snp2"
+                (
+                    job.base == "arolinks.com"
+                    and ("bcsakhi." in host or len(job.arolinks_blog_hosts) >= 2 or job.start_visits >= 2)
+                    and (
+                        "readmore" in cand_href
+                        or cand_el_id in ("cross-snp2", "btn7", "btn1")
+                    )
+                )
+                or (
+                    job.base == "vplink.in"
+                    and (
+                        "readmore" in cand_href
+                        or cand_el_id in ("btn7", "btn1")
+                    )
                 )
             )
             if is_arolinks_step2:
@@ -1251,20 +1329,24 @@ class Bypasser:
                 el.click();
                 return 'verify-btn';
               }
-              if (el.id === 'btn7') {
+              const a = el.closest('a[href]');
+              if (el.id === 'btn7' || (a && a.id === 'btn7') || !!el.closest('#btn7')) {
                 document.cookie = 'iotes=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
                 const b1 = document.getElementById('btn1');
                 if (b1 && b1.href && !b1.href.startsWith('javascript:')) {
                   window.location.href = b1.href;
                   return 'nav:' + b1.href;
                 }
+                if (a && a.href && !a.href.startsWith('javascript:') && !a.href.endsWith('#')) {
+                  window.location.href = a.href;
+                  return 'nav:' + a.href;
+                }
                 el.click();
                 return 'btn7-click';
               }
-              const a = el.closest('a[href]');
               if (!a || !a.href || a.href.startsWith('javascript:')) return null;
               const oc = a.getAttribute('onclick') || '';
-              if (/specialActionHandler/i.test(oc)) {
+              if (/specialActionHandler/i.test(oc) && !/\/readmore/i.test(a.href)) {
                 document.cookie = 'user_eiop=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
                 let target = null;
                 const origOpen = window.open;
@@ -1284,7 +1366,6 @@ class Bypasser:
               if (el.id === 'cross-snp2' || a.id === 'cross-snp2' || /\/readmore/i.test(a.href)) {
                 document.cookie = '_uocat=value; path=/; max-age=86400';
                 document.cookie = 'iotes=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-                try { el.click(); } catch (e) {}
                 window.location.href = a.href;
                 return 'nav:' + a.href;
               }

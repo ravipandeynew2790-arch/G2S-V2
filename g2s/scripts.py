@@ -50,6 +50,16 @@ INIT_SCRIPT = r"""
         set: () => { _aro = { setup: safeSetup }; }
       });
     } catch (e) {}
+    try {
+      const fakeFs = (type, size, ok, err) => {
+        if (typeof ok === 'function') {
+          try { ok({}); } catch (e) {}
+        }
+      };
+      window.webkitRequestFileSystem = fakeFs;
+      window.requestFileSystem = fakeFs;
+      document.cookie = 'ab=2; path=/; max-age=86400';
+    } catch (e) {}
     const FACTOR = __FACTOR__;
     const NOACCEL = __NOACCEL__;
     const noAccelHost = NOACCEL.some(h => host === h || host.endsWith('.' + h));
@@ -323,7 +333,7 @@ SCAN_JS = r"""
   const solvedInp = inputs.find(i => (i.value || '').length > 20);
   const tokVal = window.__g2sTsToken || (solvedInp ? solvedInp.value : null);
   const goForm = document.getElementById('go-link');
-  const goHasNoTs = arg.base === 'babylinks.in' && !!goForm;
+  const goHasNoTs = (arg.base === 'babylinks.in' || arg.base === 'vipshort.in' || arg.base === 'alpha-links.in') && !!goForm;
   out.turnstile = {
     present: !goHasNoTs && (keys.size > 0 || inputs.length > 0 || !!document.querySelector('.cf-turnstile, iframe[src*="challenges.cloudflare.com"]')),
     sitekeys: [...keys], action, cdata,
@@ -342,7 +352,6 @@ SCAN_JS = r"""
   const hasCross2 = !!document.getElementById('cross-snp2');
   const pluginType = (() => {
     if (/(^|;\s*)user_eiop=/.test(document.cookie) && hasTp2) return 'user_eiop';
-    if (arg.base === 'arolinks.com') return 'uopusi';
     if (hasCross2 && !hasTp2) return 'uopusi';
     return null;
   })();
@@ -350,11 +359,19 @@ SCAN_JS = r"""
     ? null
     : (document.getElementById('startCountdownBtn') || document.getElementById('VerifyBtn'));
   const step1Btn = (rawStep1 && vis(rawStep1) && !rawStep1.disabled) ? rawStep1 : null;
+  const rawBtn6 = document.getElementById('btn6');
+  const btn6Vis = !!(rawBtn6 && vis(rawBtn6) && !rawBtn6.disabled);
   document.querySelectorAll('button, a, input[type=submit], input[type=button], [role=button], [onclick]').forEach(el => {
     const inTp2 = el.id === 'tp-snp2' || !!el.closest('#tp-snp2');
     const inCross2 = el.id === 'cross-snp2' || !!el.closest('#cross-snp2');
     const inBtn17 = el.id === 'btn1' || el.id === 'btn7' || !!el.closest('#btn1, #btn7');
-    if ((hasTp2 || hasCross2 || location.hostname.includes('bcsakhi.')) && inBtn17) return;
+    const inBtn6 = el.id === 'btn6' || !!el.closest('#btn6');
+    if (goForm && (el.id === 'ai3-get-link-btn' || el.classList.contains('get-link'))) {
+      const gh = (el.getAttribute('href') || '').trim();
+      if (!gh || gh === '#' || /^javascript:/i.test(gh)) return;
+    }
+    if ((hasTp2 || hasCross2) && (inBtn17 || inBtn6)) return;
+    if (btn6Vis && inBtn17) return;
     if (step1Btn && (inTp2 || inCross2)) return;
     if (pluginType === 'user_eiop' && (el.id === 'startCountdownBtn' || inCross2)) return;
     if (pluginType === 'uopusi' && inTp2) return;
@@ -516,15 +533,19 @@ JS_CLICK = r"""
   const el = document.querySelector('[data-g2s-id="' + gid + '"]');
   if (!el) return false;
   el.scrollIntoView({ block: 'center' });
-  if (el.id === 'btn7') {
+  const parentA = el.closest('a[href]');
+  if (el.id === 'btn7' || (parentA && parentA.id === 'btn7') || !!el.closest('#btn7')) {
     document.cookie = 'iotes=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     const b1 = document.getElementById('btn1');
     if (b1 && b1.href && !b1.href.startsWith('javascript:')) {
       window.location.href = b1.href;
       return true;
     }
+    if (parentA && parentA.href && !parentA.href.startsWith('javascript:') && !parentA.href.endsWith('#')) {
+      window.location.href = parentA.href;
+      return true;
+    }
   }
-  const parentA = el.closest('a[href]');
   if (parentA && parentA.href && !parentA.href.startsWith('javascript:') && !parentA.href.endsWith('#')) {
     const oc = parentA.getAttribute('onclick') || '';
     if (/specialActionHandler/i.test(oc)) {
@@ -553,6 +574,7 @@ JS_CLICK = r"""
 
 SUBMIT_GO_FORM_JS = r"""
 () => {
+  try { document.cookie = 'ab=2; path=/; max-age=86400'; } catch (e) {}
   const gl = document.querySelector('a.get-link');
   if (gl && gl.href && !gl.href.endsWith('#') && !gl.href.startsWith('javascript:') &&
       !/effectivecpmnetwork|highperformanceformat|profitablecpmrate|achievablecpmrevenue/i.test(gl.href)) {
@@ -561,7 +583,10 @@ SUBMIT_GO_FORM_JS = r"""
   }
   const f = document.querySelector('form[action*="/links/go"], #go-link');
   if (!f) return false;
+  let csrf = '';
   try {
+    const ci = f.querySelector('input[name="_csrfToken"]');
+    if (ci && ci.value) csrf = ci.value;
     f.classList.add('go-link');
     const html = document.documentElement ? document.documentElement.outerHTML : '';
     const mSec = html.match(/AroShield\.setup\(\{[\s\S]*?token:\s*["']([^"']+)["']/);
@@ -577,7 +602,10 @@ SUBMIT_GO_FORM_JS = r"""
       secInp.value = secVal;
     }
     const tok = window.__g2sTsToken || window.__aroTs || '';
-    if (tok && !location.hostname.endsWith('babylinks.in')) {
+    const unlocked = (f.querySelector('input[name="_Token[unlocked]"]')?.value || '');
+    const allowsTs = !!f.querySelector('[name="cf-turnstile-response"], .cf-turnstile') ||
+                     unlocked.includes('cf-turnstile-response') || !!secVal;
+    if (tok && allowsTs && !location.hostname.endsWith('babylinks.in')) {
       window.__aroTs = tok;
       let gi = f.querySelector('[name="cf-turnstile-response"]');
       if (!gi) {
@@ -591,10 +619,12 @@ SUBMIT_GO_FORM_JS = r"""
   } catch (e) {}
   try {
     if (window.jQuery && window.jQuery.ajax && !location.hostname.endsWith('babylinks.in')) {
+      const hdrs = csrf ? { 'X-CSRF-Token': csrf } : {};
       window.jQuery.ajax({
         dataType: 'json',
         type: 'POST',
         url: f.getAttribute('action') || '/links/go',
+        headers: hdrs,
         data: window.jQuery(f).serialize(),
         success: function(result) {
           if (result && result.url) {
@@ -612,14 +642,26 @@ SUBMIT_GO_FORM_JS = r"""
   } catch (e) {}
   try {
     const fd = new URLSearchParams(new FormData(f));
+    const hdrs = {
+      'X-Requested-With': 'XMLHttpRequest',
+      'Accept': 'application/json, text/javascript, */*; q=0.01',
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+    };
+    if (csrf) hdrs['X-CSRF-Token'] = csrf;
     fetch(f.action || '/links/go', {
       method: 'POST',
-      headers: {
-        'X-Requested-With': 'XMLHttpRequest',
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-      },
+      headers: hdrs,
       body: fd.toString(),
       credentials: 'include'
+    }).then(r => r.json()).then(result => {
+      if (result && result.url) {
+        window.finalLink = result.url;
+        const a = document.querySelector('a.get-link');
+        if (a) {
+          a.setAttribute('href', result.url);
+          a.classList.remove('disabled');
+        }
+      }
     }).catch(() => {});
     return true;
   } catch (e) {}

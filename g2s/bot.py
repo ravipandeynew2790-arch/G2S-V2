@@ -37,8 +37,10 @@ def estimate_duration(url: str) -> float:
         return 90.0
     if "get2short." in h or "liteshort." in h or "nowshort." in h or "linksflys." in h:
         return 48.0
-    if "softurl." in h or "jobsraavi." in h:
+    if "softurl." in h or "jobsraavi." in h or "alpha-links." in h:
         return 35.0
+    if "vipshort." in h:
+        return 25.0
     if "babylinks." in h:
         return 18.0
     if "linksfire." in h:
