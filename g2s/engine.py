@@ -137,6 +137,95 @@ def decode_timer_token(tok: str | None):
     return None
 
 
+def _decrypt_aes_cbc(enc_d: str, k_hash: str) -> str | None:
+    """Decrypt '<iv_hex>:<ciphertext_hex>' with hex key `k_hash` using AES-CBC (PKCS7)."""
+    try:
+        iv_hex, ct_hex = enc_d.split(":", 1)
+        iv = bytes.fromhex(iv_hex)
+        ct = bytes.fromhex(ct_hex)
+        key = bytes.fromhex(k_hash)
+    except Exception:
+        return None
+    try:
+        import ctypes
+        import ctypes.util
+        libpath = ctypes.util.find_library("crypto") or "libcrypto.so.3"
+        lib = ctypes.CDLL(libpath)
+        lib.EVP_CIPHER_CTX_new.restype = ctypes.c_void_p
+        lib.EVP_CIPHER_CTX_free.argtypes = [ctypes.c_void_p]
+        lib.EVP_aes_256_cbc.restype = ctypes.c_void_p
+        lib.EVP_aes_128_cbc.restype = ctypes.c_void_p
+        lib.EVP_DecryptInit_ex.argtypes = [
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p
+        ]
+        lib.EVP_DecryptUpdate.argtypes = [
+            ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_char_p, ctypes.c_int
+        ]
+        lib.EVP_DecryptFinal_ex.argtypes = [
+            ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)
+        ]
+        ctx = lib.EVP_CIPHER_CTX_new()
+        try:
+            cipher = lib.EVP_aes_256_cbc() if len(key) == 32 else lib.EVP_aes_128_cbc()
+            if lib.EVP_DecryptInit_ex(ctx, cipher, None, key, iv) != 1:
+                raise ValueError("EVP_DecryptInit_ex failed")
+            out_buf = ctypes.create_string_buffer(len(ct) + 32)
+            out_len1 = ctypes.c_int(0)
+            if lib.EVP_DecryptUpdate(ctx, out_buf, ctypes.byref(out_len1), ct, len(ct)) != 1:
+                raise ValueError("EVP_DecryptUpdate failed")
+            out_len2 = ctypes.c_int(0)
+            tail_ptr = ctypes.cast(ctypes.addressof(out_buf) + out_len1.value, ctypes.c_char_p)
+            if lib.EVP_DecryptFinal_ex(ctx, tail_ptr, ctypes.byref(out_len2)) != 1:
+                raise ValueError("EVP_DecryptFinal_ex failed")
+            return out_buf.raw[: out_len1.value + out_len2.value].decode("utf-8")
+        finally:
+            lib.EVP_CIPHER_CTX_free(ctx)
+    except Exception:
+        pass
+    try:
+        import subprocess
+        alg = "-aes-256-cbc" if len(key) == 32 else "-aes-128-cbc"
+        p = subprocess.run(
+            ["openssl", "enc", "-d", alg, "-K", k_hash, "-iv", iv_hex],
+            input=ct,
+            capture_output=True,
+            check=True,
+            timeout=5,
+        )
+        return p.stdout.decode("utf-8")
+    except Exception:
+        return None
+
+
+def _extract_urlking_id(url: str) -> str | None:
+    """Extract the link/file ID from a urlking.in or mytoolspro.pages.dev URL."""
+    try:
+        from urllib.parse import parse_qs
+        p = urlparse(url)
+        host = (p.hostname or "").lower()
+        if p.fragment:
+            m = re.search(r"(?:^|[&#])id=([A-Za-z0-9_-]{4,64})", p.fragment)
+            if m:
+                return m.group(1)
+        q = parse_qs(p.query)
+        for k in ("id", "link_id"):
+            v = (q.get(k) or [""])[0].strip()
+            if re.fullmatch(r"[A-Za-z0-9_-]{4,64}", v):
+                return v
+        if host == "urlking.in" or host.endswith(".urlking.in"):
+            m = re.search(r"^/api/(?:step2|gate)/([A-Za-z0-9_-]{4,64})", p.path, re.I)
+            if m:
+                return m.group(1)
+            m = re.match(r"^/([A-Za-z0-9_-]{4,64})/?$", p.path)
+            if m and m.group(1).lower() not in (
+                "api", "get", "login", "register", "terms", "privacy", "dashboard", "admin"
+            ):
+                return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
 def short(url: str, n: int = 90) -> str:
     return url if len(url) <= n else url[:n] + "…"
 
@@ -490,6 +579,14 @@ class Bypasser:
     async def _attempt(self, url, log, t0):
         loop = asyncio.get_running_loop()
         job = Job(url, log, loop)
+        if job.base == "urlking.in" or "mytoolspro.pages.dev" in url:
+            uk_id = _extract_urlking_id(url)
+            if uk_id and await self._try_urlking_direct(job, uk_id):
+                dest = job.result.result()
+                elapsed = round(time.monotonic() - t0, 1)
+                job.log(f"✔ Destination found in {elapsed}s ({job.method})")
+                return {"url": dest, "elapsed": elapsed, "method": job.method,
+                        "steps": job.steps, "source": url}
         try:
             page = await self.ctx.new_page()
         except Exception:  # browser died (closed window, crash) -> relaunch
@@ -657,6 +754,70 @@ class Bypasser:
             pass
         return False
 
+    async def _try_urlking_direct(self, job, url_id: str) -> bool:
+        try:
+            import aiohttp
+            ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+            headers = {
+                "User-Agent": ua,
+                "Origin": "https://get.urlking.in",
+                "Referer": "https://get.urlking.in/",
+            }
+            for pkw in ({}, self._aiohttp_proxy_kwargs()):
+                try:
+                    jar = aiohttp.CookieJar(unsafe=True)
+                    async with aiohttp.ClientSession(
+                        cookie_jar=jar,
+                        timeout=aiohttp.ClientTimeout(total=12),
+                        headers=headers,
+                    ) as s:
+                        async with s.get(
+                            f"https://go.urlking.in/api/gate/{url_id}",
+                            allow_redirects=False,
+                            **pkw,
+                        ) as r0:
+                            if r0.status == 404:
+                                job.fatal = f"Shortener link not found (404 on go.urlking.in/{url_id})"
+                                return False
+                        async with s.get(
+                            f"https://go.urlking.in/API/d/p?id={url_id}&_t={int(time.time() * 1000)}",
+                            **pkw,
+                        ) as r1:
+                            if r1.status != 200:
+                                continue
+                            j1 = await r1.json(content_type=None)
+                        sig = (j1 or {}).get("_v2_auth_sig")
+                        if not sig:
+                            continue
+                        async with s.post(
+                            "https://go.urlking.in/API/v/get-link",
+                            json={"_v2_auth_sig": sig, "id": url_id},
+                            **pkw,
+                        ) as r2:
+                            if r2.status != 200:
+                                continue
+                            j2 = await r2.json(content_type=None)
+                        if isinstance(j2, dict) and j2.get("enc_d") and j2.get("_k_hash"):
+                            dest = _decrypt_aes_cbc(j2["enc_d"], j2["_k_hash"])
+                            if dest and dest.startswith(("http://", "https://")):
+                                try:
+                                    await s.post(
+                                        "https://go.urlking.in/API/click",
+                                        json={"id": url_id},
+                                        **pkw,
+                                    )
+                                except Exception:
+                                    pass
+                                job.steps.append(f"https://go.urlking.in/{url_id}")
+                                job.set_result(dest, "urlking API")
+                                return True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return False
+
     async def _attach(self, job, page, init=True):
         cfg = self.cfg
         try:
@@ -686,7 +847,8 @@ class Bypasser:
         async def on_response(resp):
             try:
                 u = resp.url
-                job.check_shortcut(u)
+                if resp.frame == page.main_frame and resp.request.is_navigation_request():
+                    job.check_shortcut(u)
                 if (
                     resp.status in (404, 410)
                     and resp.request.is_navigation_request()
@@ -709,7 +871,11 @@ class Bypasser:
                 ):
                     job.fatal = f"Shortener server {host_of(u)} is down (HTTP {resp.status} — origin server offline)"
                     return
-                if resp.status in (301, 302, 303, 307, 308):
+                if (
+                    resp.status in (301, 302, 303, 307, 308)
+                    and resp.frame == page.main_frame
+                    and resp.request.is_navigation_request()
+                ):
                     loc = resp.headers.get("location")
                     if loc:
                         from urllib.parse import urljoin
@@ -885,6 +1051,21 @@ class Bypasser:
         host = host_of(url)
         if job.fatal:
             raise BypassError(job.fatal)
+
+        # --- urlking.in / mytoolspro.pages.dev: unwrap directly via gate + /API/d/p + /API/v/get-link ---
+        if (
+            (job.base == "urlking.in" or "urlking.in" in host or "mytoolspro.pages.dev" in host)
+            and not job.reached_final
+            and "urlking_unwrapped" not in job.shortcut_used
+        ):
+            uk_id = _extract_urlking_id(url) or _extract_urlking_id(job.start_url)
+            if uk_id:
+                job.shortcut_used.add("urlking_unwrapped")
+                job.log(f"⚡ Unwrapping urlking.in ({uk_id}) via direct API…")
+                if await self._try_urlking_direct(job, uk_id):
+                    return page
+                if job.fatal:
+                    raise BypassError(job.fatal)
 
         # --- babylinks.in: work.jobsheel.com frontend is restricted; unwrap via jobsheel.com ---
         if job.base == "babylinks.in" and ("baby.php" in url or host in ("work.jobsheel.com", "jobsheel.com")):
@@ -1361,7 +1542,7 @@ class Bypasser:
 
         # --- final page: submit after timer if template doesn't auto-submit, or resubmit on error ---
         if job.reached_final and not ts_pending:
-            if job.base in ("babylinks.in", "softurl.in", "alpha-links.in", "urllinkshort.in", "urlspay.com"):
+            if job.base in ("babylinks.in", "softurl.in", "alpha-links.in", "urllinkshort.in", "urlspay.com", "linksflys.com"):
                 wait_needed = 6.0
             elif job.base == "v2links.me":
                 wait_needed = 8.5
