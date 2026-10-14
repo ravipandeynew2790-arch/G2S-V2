@@ -256,9 +256,19 @@ SCAN_JS = r"""
     const u = el.href || el.action || '';
     if (re.test(u)) found.add(u);
     re.lastIndex = 0;
+    if (el.tagName === 'A' && u && location.hostname && !location.hostname.endsWith(arg.base)) {
+      try {
+        const pu = new URL(u, location.href);
+        if ((pu.hostname === arg.base || pu.hostname.endsWith('.' + arg.base)) && pu.pathname && pu.pathname.length > 1) {
+          found.add(pu.href);
+        }
+      } catch (e) {}
+    }
   });
   try {
-    const rtgA = document.querySelector('#rtg-snp21 a[href], a#rtg-snp21[href], a#btn7[href], a#btn6[href*="?wp="]');
+    const rtgA = document.querySelector('#rtg-snp21 a[href], a#rtg-snp21[href], #rtg-snp2 a[href], a#rtg-snp2[href], a#btn7[href], a#btn6[href*="?wp="]') ||
+                 (document.getElementById('rtg-snp2') && document.getElementById('rtg-snp2').closest('a[href]')) ||
+                 (document.getElementById('rtg-snp21') && document.getElementById('rtg-snp21').closest('a[href]'));
     if (rtgA && /^https?:\/\//i.test(rtgA.href)) found.add(rtgA.href);
     const gteA = (arg.base !== 'arolinks.com' && arg.base !== 'vplink.in' && sessionStorage.getItem('__g2sPlugin') !== 'uopusi')
       ? document.getElementById('gtelinkbtn')
@@ -333,7 +343,7 @@ SCAN_JS = r"""
   const solvedInp = inputs.find(i => (i.value || '').length > 20);
   const tokVal = window.__g2sTsToken || (solvedInp ? solvedInp.value : null);
   const goForm = document.getElementById('go-link');
-  const goHasNoTs = (arg.base === 'babylinks.in' || arg.base === 'vipshort.in' || arg.base === 'alpha-links.in') && !!goForm;
+  const goHasNoTs = (arg.base === 'babylinks.in' || arg.base === 'vipshort.in' || arg.base === 'alpha-links.in' || arg.base === 'urllinkshort.in') && !!goForm;
   out.turnstile = {
     present: !goHasNoTs && (keys.size > 0 || inputs.length > 0 || !!document.querySelector('.cf-turnstile, iframe[src*="challenges.cloudflare.com"]')),
     sitekeys: [...keys], action, cdata,

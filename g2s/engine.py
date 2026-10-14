@@ -1231,7 +1231,7 @@ class Bypasser:
 
         # --- final page: submit after timer if template doesn't auto-submit, or resubmit on error ---
         if job.reached_final and not ts_pending:
-            wait_needed = 6.0 if job.base in ("babylinks.in", "softurl.in", "alpha-links.in") else 10.5
+            wait_needed = 6.0 if job.base in ("babylinks.in", "softurl.in", "alpha-links.in", "urllinkshort.in") else 10.5
             if (
                 job.final_since
                 and now - job.final_since >= wait_needed
