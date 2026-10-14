@@ -38,7 +38,7 @@ PATTERNS = [
     [r"^get\s*link\b", 100],
     [r"^continue\b|^proceed\b", 90],
     [r"click here to (next|continue|proceed)|^next step$|\bgo to (link|destination)\b|dual tap|click open", 80],
-    [r"^verify(\s+(now|human|link|to continue|you are human))?$|^i'?m not a robot|^i am human|^click to verify$", 70],
+    [r"^verify(\s+(now|human|link|to continue|you are human))?$|^i'?m not a robot|^i am human|^click to verify$|^human\s+ve?r?ification\b", 70],
     [r"^(click here|get|generate( link)?|open( link)?|go|get download link|skip( ad)?|unlock|"
      r"show link|reveal link|get your link|download link)$", 50],
 ]
@@ -62,7 +62,8 @@ class Config:
     no_accel_hosts: list = field(default_factory=lambda: [
         "get2short.com", "liteshort.com", "nowshort.com", "linksflys.com",
         "vplink.in", "arolinks.com", "babylinks.in", "alpha-links.in", "urllinkshort.in",
-        "lksfy.com", "softurl.in", "shortwala.com", "earnlinks.in", "inshorturl.in", "inshorturl.com"
+        "lksfy.com", "softurl.in", "shortwala.com", "earnlinks.in", "inshorturl.in", "inshorturl.com",
+        "urlspay.com", "v2links.me"
     ])
     timeout: int = 300
     stuck_seconds: int = 100                   # give up if one page doesn't progress
@@ -188,6 +189,8 @@ class Job:
         self.arolinks_ref_t0 = None
         self.arolinks_blog_hosts = set()
         self.final_since = None
+        self.last_failed_nav = None
+        self.error_recoveries = 0
 
     def check_shortcut(self, u: str):
         if not u or not u.startswith("http"):
@@ -221,8 +224,7 @@ class Job:
 
     def set_result(self, url, method):
         if not self.result.done():
-            if re.search(r"://(t\.me|telegram\.me)/", url, re.I):
-                url = re.sub(r"&reason=\d+$", "", url)
+            url = re.sub(r"[?&]reason=\d+$", "", url)
             self.method = method
             self.result.set_result(url)
 
@@ -468,6 +470,9 @@ class Bypasser:
                     or "server redirect loop" in err_low
                     or "404" in err_low
                     or "not found" in err_low
+                    or "is down" in err_low
+                    or "is offline" in err_low
+                    or "dns lookup failed" in err_low
                     or "google account" in err_low
                     or "oauth" in err_low
                     or "scrambled destination" in err_low
@@ -691,6 +696,19 @@ class Bypasser:
                 ):
                     job.fatal = f"Shortener link not found (HTTP {resp.status} on {host_of(u)})"
                     return
+                if (
+                    resp.status in (502, 504, 520, 521, 522, 523, 524, 525, 526, 530)
+                    and resp.request.is_navigation_request()
+                    and resp.frame == page.main_frame
+                    and not job.reached_final
+                    and (
+                        u.rstrip("/") == job.start_url.rstrip("/")
+                        or host_of(u) == job.base
+                        or host_of(u).endswith("." + job.base)
+                    )
+                ):
+                    job.fatal = f"Shortener server {host_of(u)} is down (HTTP {resp.status} — origin server offline)"
+                    return
                 if resp.status in (301, 302, 303, 307, 308):
                     loc = resp.headers.get("location")
                     if loc:
@@ -775,12 +793,21 @@ class Bypasser:
                 job.set_result(d.url, "download")
             asyncio.ensure_future(d.cancel())
 
+        def on_req_fail(req):
+            try:
+                if req.is_navigation_request() and req.frame == page.main_frame:
+                    err = (req.failure or "") if isinstance(req.failure, str) else str(req.failure or "")
+                    job.last_failed_nav = (req.url, err)
+            except Exception:
+                pass
+
         if cfg.block_heavy:
             await page.route("**/*", route_handler)
         page.on("response", lambda r: asyncio.ensure_future(on_response(r)))
         page.on("popup", lambda p: asyncio.ensure_future(on_popup(p)))
         page.on("framenavigated", on_nav)
         page.on("download", on_download)
+        page.on("requestfailed", on_req_fail)
         page.on("dialog", lambda d: asyncio.ensure_future(d.dismiss()))
 
     async def _scan(self, job, page):
@@ -806,6 +833,32 @@ class Bypasser:
     async def _tick(self, job, page):
         cfg = self.cfg
         now = time.monotonic()
+        if job.fatal:
+            raise BypassError(job.fatal)
+        raw_url = page.url or ""
+        raw_host = host_of(raw_url)
+        if raw_url.startswith("chrome-error://") or raw_host == "chromewebdata":
+            if job.last_failed_nav:
+                failed_u, failed_err = job.last_failed_nav
+                if "ERR_NAME_NOT_RESOLVED" in failed_err:
+                    dead_host = host_of(failed_u) or failed_u
+                    raise BypassError(
+                        f"{job.base} intermediate step domain ({dead_host}) is offline (DNS lookup failed)"
+                    )
+            job.error_recoveries += 1
+            if job.error_recoveries > 3:
+                failed_u = job.last_failed_nav[0] if job.last_failed_nav else job.start_url
+                raise BypassError(f"Network error loading {short(failed_u, 60)}")
+            if now - job.reload_at > 4:
+                job.reload_at = now
+                retry_url = next((u for u in reversed(job.steps) if u.startswith("http")), job.start_url)
+                job.log(f"Network error page — retrying {short(retry_url, 60)}")
+                try:
+                    await asyncio.sleep(1.5)
+                    await page.goto(retry_url, wait_until="commit")
+                except Exception:
+                    pass
+            return page
         # Cloudflare interstitial: touch NOTHING in the page (no main-world JS, no snapshots)
         try:
             title = await page.title()
@@ -921,6 +974,76 @@ class Bypasser:
                     except Exception:
                         pass
 
+        # --- urlspay.com: skip gateway and earn.urlspay.com directly to final page ---
+        if (
+            job.base == "urlspay.com"
+            and not job.reached_final
+            and (snap.get("urlspayGateway") or "earn.urlspay.com" in host)
+            and "urlspay_unwrapped" not in job.shortcut_used
+        ):
+            job.shortcut_used.add("urlspay_unwrapped")
+            target = re.sub(r"^http://", "https://", job.start_url)
+            job.log(f"⚡ Skipping urlspay.com gateway → {short(target)}")
+            try:
+                await page.goto(target, wait_until="commit", timeout=30000, referer="https://earn.urlspay.com/")
+                return page
+            except Exception:
+                pass
+
+        # --- v2links.me / iposbrowser.com: generate & register IPOS token via nexqmedia API ---
+        if "iposbrowser.com" in host and not job.reached_final and "ipos_unwrapped" not in job.shortcut_used:
+            import base64
+            import secrets
+            from urllib.parse import parse_qs
+            q = parse_qs(urlparse(url).query)
+            orig_url = job.start_url
+            code_b64 = (q.get("code") or [""])[0].strip()
+            if code_b64:
+                try:
+                    pad = "=" * ((4 - len(code_b64) % 4) % 4)
+                    dec = base64.b64decode(code_b64 + pad).decode("utf-8", "ignore").strip()
+                    if dec.startswith(("http://", "https://")):
+                        orig_url = dec
+                except Exception:
+                    pass
+            token = secrets.token_hex(16)
+            saved = False
+            try:
+                import aiohttp
+                headers = {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "X-App-Key": "daCW5AOtKVl5eETOzt1IkudgrpjUJSMKf99juxBA2d97jlmClgLy",
+                    "User-Agent": "okhttp/4.12.0",
+                }
+                payload = {"url": orig_url, "token": token, "service": "token"}
+                for pkw in (self._aiohttp_proxy_kwargs(), {}):
+                    try:
+                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=12)) as s:
+                            async with s.post(
+                                "https://nexqmedia.com/ipos/",
+                                headers=headers,
+                                json=payload,
+                                **pkw,
+                            ) as r:
+                                if r.status in (200, 201):
+                                    saved = True
+                                    break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            if saved:
+                job.shortcut_used.add("ipos_unwrapped")
+                sep = "&" if "?" in orig_url else "?"
+                target = f"{orig_url}{sep}token={token}"
+                job.log(f"⚡ IPOS Browser token generated → {short(target)}")
+                try:
+                    await page.goto(target, wait_until="commit", timeout=30000)
+                    return page
+                except Exception:
+                    pass
+
         # --- vipshort.in: unwrap myphp.php / blog via POST vip1=4 directly to m.vipshort.in ---
         if (
             job.base == "vipshort.in"
@@ -932,13 +1055,13 @@ class Bypasser:
             and host != CF_HOST
         ):
             if "vipshort_unwrapped" not in job.shortcut_used:
-                job.shortcut_used.add("vipshort_unwrapped")
                 job.log(f"⚡ Unwrapping vipshort step chain on {host} via vip1=4…")
                 try:
                     m_url = await self._eval(
                         page,
                         r"""async () => {
                             try {
+                                for (let i = 1; i < 10000; i++) { clearTimeout(i); clearInterval(i); }
                                 const r = await fetch('/', {
                                     method: 'POST',
                                     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -952,6 +1075,7 @@ class Bypasser:
                         }""",
                     )
                     if m_url and str(m_url).startswith("http"):
+                        job.shortcut_used.add("vipshort_unwrapped")
                         job.log(f"⚡ Final link obtained → {short(m_url)}")
                         await self.ctx.add_cookies([
                             {"name": "ab", "value": "2", "domain": "m.vipshort.in", "path": "/"}
@@ -1015,11 +1139,17 @@ class Bypasser:
 
         text = snap.get("text", "")
 
-        # --- dead / 404 shortener links ----------------------------------------
+        # --- dead / 404 / 52x shortener links ----------------------------------
         if (host == job.base or host.endswith("." + job.base)) and not job.reached_final:
             if re.search(r"^error:\s*404|\b404\s+not\s+found\b|page\s+not\s+found", snap.get("title", ""), re.I) or \
                re.search(r"the requested address .* was not found on this server|\b404\s+not\s+found\b", text, re.I):
                 raise BypassError(f"Shortener link not found (404 on {host})")
+            if re.search(
+                r"\b(52[0-6]|502|504)\s*:\s*(connection timed out|web server is down|origin is unreachable|bad gateway|gateway time-?out|ssl handshake failed)",
+                snap.get("title", "") + " " + text[:400],
+                re.I,
+            ):
+                raise BypassError(f"Shortener server {host} is down (Cloudflare 52x — origin server offline)")
 
         # --- hard blocks (VPN / datacenter IP / unsupported browser) -----------
         if BLOCK_RE.search(text) or BLOCK_RE.search(snap.get("title", "")):
@@ -1231,7 +1361,12 @@ class Bypasser:
 
         # --- final page: submit after timer if template doesn't auto-submit, or resubmit on error ---
         if job.reached_final and not ts_pending:
-            wait_needed = 6.0 if job.base in ("babylinks.in", "softurl.in", "alpha-links.in", "urllinkshort.in") else 10.5
+            if job.base in ("babylinks.in", "softurl.in", "alpha-links.in", "urllinkshort.in", "urlspay.com"):
+                wait_needed = 6.0
+            elif job.base == "v2links.me":
+                wait_needed = 8.5
+            else:
+                wait_needed = 10.5
             if (
                 job.final_since
                 and now - job.final_since >= wait_needed
@@ -1247,6 +1382,10 @@ class Bypasser:
                 job.go_error = None
                 await self._eval(page, SUBMIT_GO_FORM_JS)
                 return page
+
+        # --- wait for large blog pages to finish streaming DOM before clicking top buttons ---
+        if snap.get("loading") and not on_base and not job.reached_final and now - job.url_since < 8.0:
+            return page
 
         # --- click the best "next step" button -------------------------------------
         for cand in snap.get("candidates") or []:
@@ -1325,8 +1464,10 @@ class Bypasser:
             direct = await self._eval(page, r"""(gid) => {
               const el = document.querySelector('[data-g2s-id="' + gid + '"]');
               if (!el) return null;
-              if (el.id === 'startCountdownBtn') {
-                el.click();
+              if (el.id === 'startCountdownBtn' || el.id === 'VerifyBtn' || el.id === 'btn6' || !!el.closest('#btn6, #startCountdownBtn, #VerifyBtn')) {
+                const b = el.closest('#btn6, #startCountdownBtn, #VerifyBtn') || el;
+                try { b.click(); } catch (e) {}
+                try { if (b !== el) el.click(); } catch (e) {}
                 return 'verify-btn';
               }
               const a = el.closest('a[href]');

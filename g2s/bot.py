@@ -43,7 +43,7 @@ def estimate_duration(url: str) -> float:
         return 25.0
     if "babylinks." in h:
         return 18.0
-    if "linksfire." in h:
+    if "linksfire." in h or "urlspay." in h or "v2links." in h or "makelinks." in h:
         return 10.0
     if "urllinkshort." in h or "shortwala." in h or "earnlinks." in h or "lksfy." in h:
         return 20.0
@@ -699,13 +699,13 @@ class TelegramBot:
 
         def on_log(line: str):
             now_l = time.monotonic()
-            elapsed_now = now_l - t0
-            log_lines.append(f"[{elapsed_now:5.1f}s] {line}")
             low = line.lower()
             if step_state["started_at"] is None and ("opening " in low or "→ " in low):
                 step_state["started_at"] = now_l
                 self._active_jobs[job_track_id] = [now_l, base_est]
                 step_state["pct_floor"] = max(step_state["pct_floor"], 12)
+            elapsed_now = now_l - (step_state["started_at"] or t0)
+            log_lines.append(f"[{elapsed_now:5.1f}s] {line}")
 
             m_wait = re.search(
                 r"waiting\s+(\d+)s\b|server\s+timer\s+(\d+)s\s+left",

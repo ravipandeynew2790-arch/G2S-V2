@@ -180,6 +180,9 @@ async def resolve_link_core(
     t0 = time.time()
 
     def log_fn(msg: str):
+        nonlocal t0
+        if not raw_logs:
+            t0 = time.time()
         raw_logs.append(msg)
         line = f"[{time.time() - t0:5.1f}s] {msg}"
         log_lines.append(line)

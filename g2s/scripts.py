@@ -74,6 +74,7 @@ INIT_SCRIPT = r"""
     const factor = () => {
       if (noAccelHost || isBaseHost()) return 1;
       if (window._cf_chl_opt) return 1;              // CF interstitial
+      if (/myphp\.php/i.test(location.pathname || '')) return 1;
       if (isFinalPage()) return 1;                   // AdLinkFly final page (server-checked 5s timer)
       return FACTOR;
     };
@@ -227,10 +228,11 @@ SCAN_JS = r"""
   try {
     const ggd = document.getElementById('ggd-container');
     const tp2 = document.getElementById('tp-snp2');
-    if (((ggd && vis(ggd)) || tp2) && window.__g2sAway) {
+    if (((ggd && vis(ggd)) || (tp2 && /(^|;\s*)user_eiop=/.test(document.cookie))) && window.__g2sAway) {
       window.__g2sAway(true);
     }
   } catch (e) {}
+  out.loading = document.readyState === 'loading';
   try {
     if (/(^|;\s*)user_eiop=/.test(document.cookie)) {
       sessionStorage.setItem('__g2sPlugin', 'user_eiop');
@@ -284,7 +286,12 @@ SCAN_JS = r"""
       let tu = atob(tgMatch[1].trim());
       const gm = tu.match(/^https?:\/\/(?:www\.)?google\.[a-z.]+\/url\?(?:.*&)?url=([^&]+)/i);
       if (gm) tu = decodeURIComponent(gm[1]);
-      if (/^https?:\/\//i.test(tu)) found.add(tu);
+      if (/^https?:\/\//i.test(tu)) {
+        if (tu.split('#')[0] === location.href.split('#')[0]) {
+          tu = tu.split('#')[0] + (tu.includes('?') ? '&' : '?') + 'step=1';
+        }
+        found.add(tu);
+      }
     }
   } catch (e) {}
   out.wpLinks = [...found].filter(u => u.split('#')[0] !== location.href.split('#')[0]);
@@ -343,7 +350,9 @@ SCAN_JS = r"""
   const solvedInp = inputs.find(i => (i.value || '').length > 20);
   const tokVal = window.__g2sTsToken || (solvedInp ? solvedInp.value : null);
   const goForm = document.getElementById('go-link');
-  const goHasNoTs = (arg.base === 'babylinks.in' || arg.base === 'vipshort.in' || arg.base === 'alpha-links.in' || arg.base === 'urllinkshort.in') && !!goForm;
+  const isUrlspayGate = arg.base === 'urlspay.com' && !goForm && !!(document.getElementById('step1Btn') || document.getElementById('goBtn'));
+  out.urlspayGateway = isUrlspayGate;
+  const goHasNoTs = ((arg.base === 'babylinks.in' || arg.base === 'vipshort.in' || arg.base === 'alpha-links.in' || arg.base === 'urllinkshort.in' || arg.base === 'urlspay.com' || arg.base === 'v2links.me') && !!goForm) || isUrlspayGate;
   out.turnstile = {
     present: !goHasNoTs && (keys.size > 0 || inputs.length > 0 || !!document.querySelector('.cf-turnstile, iframe[src*="challenges.cloudflare.com"]')),
     sitekeys: [...keys], action, cdata,
@@ -414,6 +423,35 @@ SCAN_JS = r"""
     cands.push({ id: gid, elId, text: t, tag: el.tagName, href, score });
   });
   cands.sort((a, b) => (b.score - a.score) || ((b.href ? 1 : 0) - (a.href ? 1 : 0)));
+  if (cands.length > 0 || document.readyState === 'loading') {
+    window.__g2sNoCandSince = 0;
+  } else if (location.hostname.includes('rupeeriser.') || location.hostname.includes('bcsakhi.')) {
+    if (!window.__g2sNoCandSince) window.__g2sNoCandSince = Date.now();
+    if (Date.now() - window.__g2sNoCandSince > 15000) {
+      window.__g2sNoCandSince = Date.now();
+      const unhide = (el) => {
+        for (let cur = el; cur && cur !== document.body; cur = cur.parentElement) {
+          if (getComputedStyle(cur).display === 'none') cur.style.setProperty('display', 'block', 'important');
+          if (getComputedStyle(cur).visibility === 'hidden') cur.style.setProperty('visibility', 'visible', 'important');
+          if (getComputedStyle(cur).opacity === '0') cur.style.setProperty('opacity', '1', 'important');
+          cur.disabled = false;
+        }
+      };
+      const fallbackTarget = (pluginType === 'user_eiop' && document.getElementById('tp-snp2')) ||
+                             (pluginType === 'uopusi' && document.getElementById('cross-snp2')) ||
+                             document.getElementById('btn7') ||
+                             document.getElementById('cross-snp2') ||
+                             document.getElementById('btn1') ||
+                             document.getElementById('tp-snp2');
+      if (fallbackTarget) {
+        const wb = document.getElementById('WaitBox');
+        if (wb) wb.style.display = 'none';
+        const tb = document.getElementById('timerBox');
+        if (tb) tb.style.display = 'none';
+        unhide(fallbackTarget);
+      }
+    }
+  }
   out.candidates = cands.slice(0, 8);
 
   // -- WP safelink forms (server-side timer token) ----------------------------
